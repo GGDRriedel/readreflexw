@@ -9,7 +9,7 @@ There is no affiliation with nor endorsement for the afforementioned organizatio
 
 
 
-Please rely on the example usage notebook for how-to use the routine. 
+Please rely on the ###[example usage](example_usage.ipynb) notebook for how-to use the routine. 
 
 
 The software is provided "as is" according to the license provided on Github, no guarantees for anything, use at your own risk. 
