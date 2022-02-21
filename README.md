@@ -1,7 +1,7 @@
 # readreflexw
 A repo of reading routines for ReflexW-Data
 
-[![License](https://img.shields.io/github/license/ggdrriedel/readreflexw)](https://github.com/ggdrriedel/readreflexw/blob/master/LICENSE)
+[![License](https://img.shields.io/github/license/GGDRriedel/readreflexw)](https://github.com/GGDRriedel/readreflexw/blob/main/LICENSE)
 
 
 
