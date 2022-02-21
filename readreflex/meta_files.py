@@ -4,7 +4,7 @@ Created on Mon Mar 23 14:36:39 2020
 
 @author: Riedel
 
-Helper-Functions to Read and Write meta files like pck
+Helper-Functions to Read and Write meta files like .pck 
 """
 
 

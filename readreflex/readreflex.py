@@ -24,91 +24,10 @@ import segyio
 
 #specific scipy packages for heritage to filters: 
 from scipy.signal import butter, lfilter, spectrogram, welch,windows,hilbert
-
 from librosa.core import reassigned_spectrogram
-
 from librosa.core import reassigned_spectrogram as ifgram
-
 from tqdm import tqdm
 
-def readref(datfile="testdata.DAT"):
-    # reads .**T file of the reflexw format and returns a dictionary of the chosen parmeters
-    print("reading file: " + datfile)
-    
-    stringlist= datfile.split('.')
-    # get file ending number wich according to documentation can only be 2 digits of numbers + the rest T of the ".dat"
-    procnumber=stringlist[-1][-3:-1]
-    parfile=stringlist[0]
-    #print(parfile+'.'+procnumber+'R')
-    parfilefull=parfile+'.'+procnumber+'R'
-    
-    with open(parfilefull, "rb") as f:
-       # Read the whole file at once
-       data = f.read()
-       #print(data)
-
-     
-    samplenumber=int.from_bytes(data[420:422],byteorder='little')
-    
-    tracenumber=int.from_bytes(data[452:456],byteorder='little') 
-    
-    formatcode=int.from_bytes(data[436:440],byteorder='little') 
-    
-        
-    traceinrement=struct.unpack('f', data[460:464])
-    print(traceinrement)
-    timeincrement=struct.unpack('f', data[464:468])
-    print(timeincrement)
-        
-    timebegin=struct.unpack('f', data[472:476])
-        
-    print(timebegin)
-        
-    header={"samplenumber":samplenumber, "tracenumber":tracenumber,"formatcode":formatcode,"traceinrement":traceinrement[0],
-            "timeincrement":timeincrement[0],"timebegin":timebegin[0]}
-    return header
-       
-def readtrace_newformat(byteobject):
-    # reads a trace in the given byteobject 
-    # byteobject should be of Formatcode 3 (32bit floating point int)
-    TraceNo=int.from_bytes(byteobject[0:4],byteorder='little')
-    NoOfSamples=int.from_bytes(byteobject[4:8],byteorder='little')
-    tracedata=np.empty(NoOfSamples)
-    
-    #header takes 154 bytes, always! (at least it should)
-    
-    for j,i in enumerate(np.arange(158,158+NoOfSamples*4,4)):
-            tracedata[j]=struct.unpack('', byteobject[i:i+4])[0]
-    return tracedata
-
-
-def readdat(datfile=r"testdata.DAT"):
-    # reads hole binary file as a bytes object
-    
-     with open(datfile, "rb") as f:
-       # Read the whole file at once
-       datdata = f.read()
-       #print(data)
-       return datdata
-   
-def readseismics(datafile): 
-    ''' Reads all kinds of seismic file formats inherited from \\
-    the obspy library
-    
-     Keyword arguments:
-         datfile -- the file to read
-    '''
-   # read
-    traceobject=obread(datafile)
-    #create array of Dimensions (samples, tracenumber)
-    data=np.empty((traceobject[0].stats.npts,len(traceobject.traces)))
-    for i in range(len(traceobject.traces)):
-        data[:,i]=traceobject.traces[i].data
-    return data
-
-     
-        
-    
     
 ## radargram reader-class
        
@@ -116,11 +35,12 @@ def readseismics(datafile):
 class radargram():
     
     #initialization to set up overtake of fileformats
+    #for later bookkeeping, unused yet
     def __init__(self,fileformat=None):
         #this is unfinished and not used
         if fileformat is not None and fileformat.lower() in {"**r", "**t"}:
             self.fileformat = "**R"
-            self._read_file=readdat()
+        
     
         else:
             print('No file format was given, assuming .par')
@@ -193,9 +113,6 @@ class radargram():
         header={"samplenumber":samplenumber, "tracenumber":tracenumber,"formatcode":formatcode,"traceincrement":traceincrement[0],
             "timeincrement":timeincrement[0],"timebegin":timebegin[0],"time":timevec,"description": description}
         self.header=header
-        
-        
-        
         
     def read_header_file_v9(self,filepath): 
         
@@ -273,7 +190,7 @@ class radargram():
         print('Trace increment',traceincrement[0])
         timeincrement=struct.unpack('d', data[500:508])
         print('Time increment: ',timeincrement)
-        timebegin=struct.unpack('d', data[516:524])
+        timebegin=struct.unpack('d', data[516:524])[0]
         print('Time start: ',timebegin)
         
         x_start=struct.unpack('d', data[548:556])[0]
@@ -301,11 +218,10 @@ class radargram():
                         
         
         header={"samplenumber":samplenumber, "tracenumber":tracenumber,"formatcode":formatcode,"traceincrement":traceincrement[0],
-            "timeincrement":timeincrement[0],"timebegin":timebegin[0],"time":timevec,"description": description,"xoffset":xoffset}
+            "timeincrement":timeincrement[0],"timebegin":timebegin,"timedimension":timedimension,"time":timevec,"xoffset":xoffset,"description": description}
         self.header=header    
          
-        
-        
+    
     def read_data_file(self,filepath,version=8):
         ''' 
          reads hole binary file as a bytes object, reads the header file
@@ -325,9 +241,7 @@ class radargram():
             else:
                 self.read_header_file_v8(filepath=filepath)
         self.__convert_to_array()
-        
-        
-            
+           
             
     def __readtrace_newformat(self,byteobject):
     # reads a trace in the given byteobject 
@@ -367,9 +281,6 @@ class radargram():
         for i,j in enumerate(range(self.header["tracenumber"])):
             self.traces[i,:]=self.__readtrace_newformat(self.bytedata[i*_bytetracesize:(i+1)*_bytetracesize])
             #print([i,j])
-    
-       
-    
     def save(self,filepath):
         #old h5file=filepath.split(".")[0]+'.hdf5'
         h5file=filepath+'.hdf5'
@@ -379,9 +290,6 @@ class radargram():
                 #print(name)
                 dset.attrs[name]=value
 
-
-                    
-    
     def load_seismics(self,filepath): 
         ''' Reads all kinds of seismic file formats inherited from \\
     the obspy library
@@ -404,9 +312,7 @@ class radargram():
         header={"samplenumber": traceobject[0].stats.npts, "tracenumber":len(traceobject.traces),"formatcode": 3,"traceincrement": 1,
                         "timeincrement":traceobject.traces[0].stats.delta,"timebegin": 0,"time":_time,"description": "Loaded from Seismic Format"}
         self.header=header 
-    
-    
-    
+        
     def load_hdf5(self,filepath):       
         ''' Loads HDF5 files'''
         #h5file=filepath.split(".")[0]+'.hdf5'
@@ -444,8 +350,7 @@ class radargram():
                 print("Found and loaded the file!")
         except:
             print("Seems like there is no HDF5 file present or structure is not according to what's expected, check speeling please")
-        
-        
+          
     def get_output_data(self,filename, rxnumber, rxcomponent,xstep):
         '''   
         reads the output data of GPRmax-Simulations
@@ -535,7 +440,7 @@ class radargram():
         fig.canvas.mpl_connect('pick_event', onpick1)
         return fig,ax
         
-    def traceplot(self,tracenumber): 
+    def traceplot(self,tracenumber,*args,**kwargs): 
         '''
          Plots one or more traces into the same graph
         tracenumber - scalar or array of ints , needs to be a list or np array
@@ -547,7 +452,7 @@ class radargram():
             
         plt.figure()
         for traceno in tracenumber: 
-            plt.plot(self.header["time"],self.traces[traceno,:],linewidth=3)
+            plt.plot(self.header["time"],self.traces[traceno,:],linewidth=3,*args,**kwargs)
         plt.xlabel("Time")
         plt.ylabel("Amplitude")
     
@@ -572,12 +477,15 @@ class radargram():
         #plt.pcolormesh(t, f, Sxx)
         fig,(ax_signal,ax_spectro)=plt.subplots(2,1,sharex=True)
         ax_signal.plot(time,signal)
-        spec=ax_spectro.pcolormesh(t,f,np.log(Sxx))
+        spec=ax_spectro.pcolormesh(t,f,np.log(Sxx),shading='auto')
         ax_spectro.scatter(t,maxima)
+        ax_spectro.set_ylabel("Frequency in 1/dt Hz")
+        ax_spectro.set_xlabel("Time in sample dimension")
+        ax_spectro.set(title="Mean maximum frequency: "+ str(np.mean(maxima)))
         #ax_spectro.set_xlim([t[0],t[-1]])
         
         
-        fig.colorbar(spec, orientation='horizontal',label='Log10[Spec]')
+       # fig.colorbar(spec, orientation='vertical',label='Log10[Spec]')
        # plt.figure()
        # plt.pcolormesh(t, f, Sxx)
         #plt.show()
@@ -875,10 +783,14 @@ class radargram():
             self.traces=np.concatenate((self.traces,new_radargram.traces),axis=0)
             self.header['tracenumber']=self.traces.shape[0]
         
-    def return_envelope(self):
+    def return_envelope(self,*args):
         ''' Returns the envelope of the contained traces
-            checks for existence of traces in the object
+        through uses of scipy analytic signal (Hilbert Transform)
+        and its absolute
+        checks for existence of traces in the object
+        Check for single trace or all traces needs to implemented
         '''
+                
         try: 
             assert self.traces.shape, "Traces not initialized, try again"
         except AssertionError as error: 
@@ -891,23 +803,31 @@ class radargram():
                 
             return envelope
 
-    def pad(self,beginning:int,ending:int,method='edge'): 
+    def pad(self,beginning:int,ending:int,method='edge',inplace=True): 
         ''' Pads the traces with their edge, wraps np.pad'''
         try: 
             assert self.traces.shape, "Traces not initialized, try again"
         except AssertionError as error: 
             print(error)  
         else:
-            self.traces=np.pad(self.traces,((0,0),(beginning,ending)),mode=method)
-            self.header["samplenumber"]=self.header["samplenumber"]+beginning+ending
-            self.header["time"]=np.arange(self.header["time"][0],self.header["samplenumber"]*self.header["timeincrement"],self.header["timeincrement"])
+            if inplace==True:
+                self.traces=np.pad(self.traces,((0,0),(beginning,ending)),mode=method)
+                self.header["samplenumber"]=self.header["samplenumber"]+beginning+ending
+                self.header["time"]=np.arange(self.header["time"][0],self.header["samplenumber"]*self.header["timeincrement"],self.header["timeincrement"])
+            else:
+                copy=self.deepcopy()
+                copy.traces=np.pad(copy.traces,((0,0),(beginning,ending)),mode=method)
+                copy.header["samplenumber"]=copy.header["samplenumber"]+beginning+ending
+                copy.header["time"]=np.arange(copy.header["time"][0],copy.header["samplenumber"]*copy.header["timeincrement"],copy.header["timeincrement"])
+                return copy
             
     def gssi_fir_filter(self,filterlength,filtertime,filterfile)    :
-        ''' Applies the custom filter from gssi , filterfile should be provided
-        filterlength: n
+        ''' Applies a custom fir filter  , filterfile should be provided
+        used for some GSSI systems
         
-        
-        
+        filterlength:   n
+        fltertime:      Time equivalent of n filterparameters in filterfile
+        flterfile:      filterparameters to apply
         '''
         old_length=self.header['samplenumber']
         custom_filter=np.genfromtxt(filterfile,skip_header=13,delimiter=',')[:,0]
@@ -938,6 +858,7 @@ class radargram():
             writer = csv.writer(csv_file)
             for key, value in self.header.items():
                 writer.writerow([key, value])
+    
     def export_sgy(self,exportpath='default.sgy'):
         #reference: https://github.com/equinor/segyio/blob/master/python/examples/make-file.py
          spec = segyio.spec()
@@ -967,243 +888,3 @@ class radargram():
              #set sample time
              f.bin.update(hdt=int(self.header['timeincrement']*1000))
 
-
-# =============================================================================
-# 
-#         
-# import pyqtgraph as pg
-# from pyqtgraph.Qt import QtCore, QtGui
-# 
-# 
-# class ImageWidget(QtGui.QWidget):
-#     def __init__(self, rad,parent=None):
-#         super(ImageWidget, self).__init__(parent)
-# 
-#         # Interpret image data as row-major instead of col-major
-#         pg.setConfigOptions(imageAxisOrder='row-major')
-# 
-#         pg.mkQApp()
-#         self.win = pg.GraphicsLayoutWidget()
-#         self.win.setWindowTitle('pyqtgraph example: Image Analysis')
-#         self.data=np.flipud(rad.T)
-#         # A plot1 area (ViewBox + axes) for displaying the image
-#         self.plot1 = self.win.addPlot()
-# 
-#         # Item for displaying image data
-#         self.item = pg.ImageItem()
-#         self.plot1.addItem(self.item)
-# 
-#         # Custom ROI for selecting an image region
-#         self.ROI = pg.ROI([-8, 14], [50, 50],pen=pg.mkPen(color=(255,20,20)))
-#         self.ROI.addScaleHandle([0.5, 1], [0.5,0])
-#         self.ROI.addScaleHandle([0.5, 0], [0.5,1])
-#         self.ROI.addScaleHandle([0, 0.5], [1, 0.5])
-#         self.ROI.addScaleHandle([1, 0.5], [0, 0.5])
-# 
-#         self.plot1.addItem(self.ROI)
-#         self.ROI.setZValue(10)  # make sure ROI is drawn above image
-# 
-#         
-#         #get dimensions of the data to add
-#         tracecount,samplecount = new_radargram.traces.shape   
-#         #check if they match up with base radargram sampling
-#         try:
-#             self.traces.shape[1]==samplecount
-#         except:
-#             print('Input Radargram has a different sample count')
-#             
-#         #fuse the data
-#         else:
-#             self.traces=np.concatenate((self.traces,new_radargram.traces),axis=0)
-#             self.header['tracenumber']=self.traces.shape[0]
-#         
-#     def return_envelope(self):
-#         ''' Returns the envelope of the contained traces
-#             checks for existence of traces in the object
-#         '''
-#         try: 
-#             assert self.traces.shape, "Traces not initialized, try again"
-#         except AssertionError as error: 
-#             print(error)  
-#         else:
-#             envelope=np.zeros_like(self.traces)
-#             for i,trace in tqdm(enumerate(self.traces)): 
-#                 analytic_signal = hilbert(trace)
-#                 envelope[i,:]=np.abs(analytic_signal)
-#                 
-#             return envelope
-# 
-#     def pad(self,beginning:int,ending:int,method='edge'): 
-#         ''' Pads the traces with their edge, wraps np.pad'''
-#         try: 
-#             assert self.traces.shape, "Traces not initialized, try again"
-#         except AssertionError as error: 
-#             print(error)  
-#         else:
-#             self.traces=np.pad(self.traces,((0,0),(beginning,ending)),mode=method)
-#             self.header["samplenumber"]=self.header["samplenumber"]+beginning+ending
-#             self.header["time"]=np.arange(self.header["time"][0],self.header["samplenumber"]*self.header["timeincrement"],self.header["timeincrement"])
-#             
-#     def gssi_fir_filter(self,filterlength,filtertime,filterfile)    :
-#         ''' Applies the custom filter from gssi that should be procided
-#         filterlength: n
-#         
-#         
-#         
-#         '''
-#         old_length=self.header['samplenumber']
-#         custom_filter=np.genfromtxt(filterfile,skip_header=13,delimiter=',')[:,0]
-#         targetlength=np.round(self.header["time"][-1]*filterlength/filtertime)
-#         self.time_resampling(int(targetlength))
-#         old_resample_length=self.header['samplenumber']
-#         sample_rate = 1/self.header["timeincrement"]
-#         nsamples = self.header["samplenumber"]
-# 
-#         t = self.header["time"]
-#         
-#         addnumber=len(custom_filter)
-#         target_nsamples=nsamples+addnumber
-# 
-#         self.pad(beginning=addnumber,ending=0,method='edge')
-# 
-#         t=np.arange(0,target_nsamples*self.header["timeincrement"],self.header["timeincrement"])    
-#         N=len(custom_filter)
-#         taps = custom_filter
-#         self.traces = lfilter(taps, 1, self.traces,axis=1)
-#         self.time_shortening(N,N-1+old_resample_length)
-#         
-#     def export_csv(self,exportpath='export.csv'): 
-#         np.savetxt(fname=exportpath,X=self.traces,delimiter=',')
-#         pieces=exportpath.split('.')
-#         metafilename=pieces[0]+'_meta.'+pieces[1]
-#         with open(metafilename, 'w') as csv_file:  
-#             writer = csv.writer(csv_file)
-#             for key, value in self.header.items():
-#                 writer.writerow([key, value])
-#     def export_sgy(self,exportpath='default.sgy'):
-#         #reference: https://github.com/equinor/segyio/blob/master/python/examples/make-file.py
-#          spec = segyio.spec()
-#          filename = exportpath
-#          # to create a file from nothing, we need to tell segyio about the structure of
-#          # the file, i.e. its inline numbers, crossline numbers, etc. You can also add
-#          # more structural information, but offsets etc. have sensible defautls. This is
-#          # the absolute minimal specification for a N-by-M volume
-#          spec.sorting = 1
-#          spec.format = 1
-#          spec.samples = range(0,self.header['samplenumber'])
-#          spec.ilines = range(0,self.header['tracenumber'])
-#          spec.xlines = [0]
-#          tr = 0
-#          with segyio.create(filename, spec) as f:
-#              for il in spec.ilines:
-#                  for xl in spec.xlines:
-#                      f.header[tr] = {
-#                          segyio.su.offset : 1,
-#                          segyio.su.iline  : il,
-#                          segyio.su.xline  : xl,
-#                          segyio.su.dt     : int(self.header['timeincrement']*1000)
-#                          }
-#                      f.trace[tr] = self.traces[il,:]
-#                      tr += 1
-#              f.bin.update(tsort=segyio.TraceSortingFormat.INLINE_SORTING)
-#              #set sample time
-#              f.bin.update(hdt=int(self.header['timeincrement']*1000))
-# 
-# 
-# # =============================================================================
-# # 
-# #         
-# # import pyqtgraph as pg
-# # from pyqtgraph.Qt import QtCore, QtGui
-# # 
-# # 
-# # class ImageWidget(QtGui.QWidget):
-# #     def __init__(self, rad,parent=None):
-# #         super(ImageWidget, self).__init__(parent)
-# # 
-# #         # Interpret image data as row-major instead of col-major
-# #         pg.setConfigOptions(imageAxisOrder='row-major')
-# # 
-# #         pg.mkQApp()
-# #         self.win = pg.GraphicsLayoutWidget()
-# #         self.win.setWindowTitle('pyqtgraph example: Image Analysis')
-# #         self.data=np.flipud(rad.T)
-# #         # A plot1 area (ViewBox + axes) for displaying the image
-# #         self.plot1 = self.win.addPlot()
-# # 
-# #         # Item for displaying image data
-# #         self.item = pg.ImageItem()
-# #         self.plot1.addItem(self.item)
-# # 
-# #         # Custom ROI for selecting an image region
-# #         self.ROI = pg.ROI([-8, 14], [50, 50],pen=pg.mkPen(color=(255,20,20)))
-# #         self.ROI.addScaleHandle([0.5, 1], [0.5,0])
-# #         self.ROI.addScaleHandle([0.5, 0], [0.5,1])
-# #         self.ROI.addScaleHandle([0, 0.5], [1, 0.5])
-# #         self.ROI.addScaleHandle([1, 0.5], [0, 0.5])
-# # 
-# #         self.plot1.addItem(self.ROI)
-# #         self.ROI.setZValue(10)  # make sure ROI is drawn above image
-# #         
-# #        
-# #         
-# #         
-# #         # Isocurve drawing
-# #         self.iso = pg.IsocurveItem(level=50, pen='g')
-# #         self.iso.setParentItem(self.item)
-# #         self.iso.setZValue(5)
-# # 
-# #         # Contrast/color control
-# #         self.hist = pg.HistogramLUTItem()
-# #         self.hist.setImageItem(self.item)
-# #         self.win.addItem(self.hist)
-# # 
-# #         # Draggable line for setting isocurve level
-# #         self.isoLine = pg.InfiniteLine(angle=0, movable=True, pen='g')
-# #         self.hist.vb.addItem(self.isoLine)
-# #         self.hist.vb.setMouseEnabled(y=False) # makes user interaction a little easier
-# #         self.isoLine.setValue(0.8)
-# #         self.isoLine.setZValue(1000) # bring iso line above contrast controls
-# # 
-# #         # Another plot1 area for displaying ROI data
-# #         self.win.nextRow()
-# #         self.plot2 = self.win.addPlot(colspan=2)
-# #         self.plot2.setMaximumHeight(250)
-# #         self.win.resize(800, 800)
-# #         self.win.show()
-# # 
-# #         # Generate image self.data
-# #         #self.data = np.random.normal(size=(200, 100))
-# #         #self.data[20:80, 20:80] += 2.
-# #         #self.data = pg.gaussianFilter(self.data, (3, 3))
-# #         #self.data += np.random.normal(size=(200, 100)) * 0.1
-# #         self.item.setImage(self.data)
-# #         self.hist.setLevels(self.data.min(), self.data.max())
-# # 
-# #         # build isocurves from smoothed self.data
-# #         self.iso.setData(pg.gaussianFilter(self.data, (2, 2)))
-# # 
-# #         # set position and scale of image
-# #         self.item.scale(0.2, 0.2)
-# #         self.item.translate(-50, 0)
-# # 
-# #         # zoom to fit imageo
-# #         self.plot1.autoRange()  
-# # 
-# #         self.ROI.sigRegionChanged.connect(self.updatePlot)
-# #         self.updatePlot()
-# # 
-# #         self.isoLine.sigDragged.connect(self.updateIsocurve)
-# # 
-# #     # Callbacks for handling user interaction
-# #     def updatePlot(self):
-# #         selected = self.ROI.getArrayRegion(self.data, self.item)
-# #         self.plot2.plot(selected.mean(axis=-1), clear=True)
-# # 
-# #     def updateIsocurve(self):
-# #         self.iso.setLevel(self.isoLine.value())
-# #                 
-# #                     
-# # =============================================================================
-# 
-# =============================================================================
