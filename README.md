@@ -1,5 +1,9 @@
 # readreflexw
-A repo of reading routines for ReflexW-Data
+A repo of reading routines for Data written with the Program 
+[ReflexW](https://www.sandmeier-geo.de/) 
+by Sandmeier Geophysical Research
+
+There is no affiliation with nor endorsement for the afforementioned organization.
 
 [![License](https://img.shields.io/github/license/GGDRriedel/readreflexw)](https://github.com/GGDRriedel/readreflexw/blob/main/LICENSE)
 
