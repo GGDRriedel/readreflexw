@@ -495,48 +495,60 @@ class radargram():
           #  windowwelch=welch(windowsig,fs=fs,nperseg=16,noverlap=15)
            # plt.plot(windowwelch)
            
+
+    def freq_times_powersum(self,tracenumber,nperseg=64):
+        
+        '''
+         Gives Back the frequency with the maximum amplitude along the time axis multiplied by the cumsum of the power of the trace
+         Input:   Tracenumber -- Int Desired trace to treat
+                   nperseg    -- Int Sample window for the fft 
+        '''
+        #Sampling frequency 
+        fs=1.0/self.header["timeincrement"]
+                 
+        signal=self.traces[tracenumber,:]
+        
+        #we append some values to avoid hard corers at edges of the signal
+        time=self.header['time']
+        time_to_append=np.arange((int(nperseg*2))*self.header["timeincrement"]*-2,time[0],self.header["timeincrement"])
+        time=np.append(time_to_append,time)
+        time=time+np.abs(time[0])
+
+        signal=np.append(np.zeros(int(nperseg*2)),signal)
+        m=len(signal)
+        # nfft window of 10 times signal length turned out good
+        nfft=10*m
+        #print(m)
+        
+        f, t, Sxx = spectrogram(signal, fs,nperseg=nperseg,nfft=nfft,noverlap=nperseg-1,scaling='spectrum')
+        # find the maxima
+        arg_spec_max=Sxx.argmax(axis=0)
+        max_frequ_at_each_timestep=f[arg_spec_max]
+        # last value of cumsum function is sum over all
+        # might be an error here, do we use the LAST value or the one where the maximum is
+        cumsumpower=np.cumsum(np.square(Sxx),axis=0)
+        power_at_frequ=np.zeros(max_frequ_at_each_timestep.shape)
+        # get the cumsums at the max frequency indexes for each timestep: 
+        cumsum_at_max_frequ=np.take(cumsumpower,arg_spec_max[0],axis=0) 
+        cumsumpower_at_frequ_max_times_frequmax= cumsum_at_max_frequ* max_frequ_at_each_timestep
+        #written as a loop:
+        #for i in range(len(max_frequ_at_each_timestep)):
+        #    power_at_frequ[i]=max_frequ_at_each_timestep[i]*cumsumpower[arg_spec_max[i],i]
+            
+        #plt.pcolormesh(t, f, Sxx)
+        # fig,(ax_signal,ax_spectro)=plt.subplots(2,1,sharex=True)
+        #ax_signal.plot(time,signal)
+        #spec=ax_spectro.pcolormesh(t,f,np.log(Sxx))
+        #ax_spectro.scatter(t,maxima)
+        
+        #fig.colorbar(spec, orientation='horizontal',label='Log10[Spec]')
+        return  cumsumpower_at_frequ_max_times_frequmax[nperseg+1:]
 # =============================================================================
-# DISABLED. NEEDS A LOT OF WORK AND DOCUMENTATION
-#     def spectrofuncs(self,tracenumber,nperseg=64):
-#         
-#         '''
-#          Gives Back the maximum frequency of a trace along its time axis multiplied by the cumsum of the power
-#          Input: Tracenumber -- Int
-#         '''
-#          
-#         fs=1.0/self.header["timeincrement"]
-#         
-#         
-#         signal=self.traces[tracenumber,:]
-#         
-#         
-#         time=self.header['time']
-#         time_to_append=np.arange((int(nperseg*2))*self.header["timeincrement"]*-2,time[0],self.header["timeincrement"])
-#         time=np.append(time_to_append,time)
-#         time=time+np.abs(time[0])
-#         signal=np.append(np.zeros(int(nperseg*2)),signal)
-#         m=len(signal)
-#         nfft=10*m
-#         #print(m)
-#         
-#         f, t, Sxx = spectrogram(signal, fs,nperseg=nperseg,nfft=nfft,noverlap=nperseg-1,scaling='spectrum')
-#         # find the maxima
-#         maxima=Sxx.argmax(axis=0)
-#         maxima=f[maxima]
-#         power=np.cumsum(np.square(Sxx),axis=0)[-1,:]
-#         #plt.pcolormesh(t, f, Sxx)
-#        # fig,(ax_signal,ax_spectro)=plt.subplots(2,1,sharex=True)
-#         #ax_signal.plot(time,signal)
-#         #spec=ax_spectro.pcolormesh(t,f,np.log(Sxx))
-#         #ax_spectro.scatter(t,maxima)
-#         
-#         #fig.colorbar(spec, orientation='horizontal',label='Log10[Spec]')
-#         return np.multiply(maxima,power)
 #     
 #     def spectrosum(self,tracenumber,f_max,f_min,nperseg=64):
 #         
 #         '''
-#          Gives Back the powersum up until fmax divided by the powersum up to fmin
+#          Gives Back the powersum up until fmax divided by the powersum up to fmin of each trace 
 #          Input:     Tracenumber -- Int              -- Trace to calculate at 
 #                     fmax        -- Int              -- Maximum Frequency
 #                     fmin        -- Int              -- Minimum Frequency
@@ -822,8 +834,9 @@ class radargram():
                 return copy
             
     def gssi_fir_filter(self,filterlength,filtertime,filterfile)    :
-        ''' Applies a custom fir filter  , filterfile should be provided
-        used for some GSSI systems
+        ''' Applies a custom fir filter  , filterfile should be provided by user
+        
+        can be used for some GSSI systems
         
         filterlength:   n
         fltertime:      Time equivalent of n filterparameters in filterfile
@@ -861,30 +874,30 @@ class radargram():
     
     def export_sgy(self,exportpath='default.sgy'):
         #reference: https://github.com/equinor/segyio/blob/master/python/examples/make-file.py
-         spec = segyio.spec()
-         filename = exportpath
-         # to create a file from nothing, we need to tell segyio about the structure of
-         # the file, i.e. its inline numbers, crossline numbers, etc. You can also add
-         # more structural information, but offsets etc. have sensible defautls. This is
-         # the absolute minimal specification for a N-by-M volume
-         spec.sorting = 2
-         spec.format = 5
-         spec.samples = range(0,self.header['samplenumber'])
-         spec.ilines = range(0,self.header['tracenumber'])
-         spec.xlines = [0]
-         tr = 0
-         with segyio.create(filename, spec) as f:
-             for il in spec.ilines:
-                 for xl in spec.xlines:
-                     f.header[tr] = {
-                         segyio.su.offset : 1,
-                         segyio.su.iline  : il,
-                         segyio.su.xline  : xl,
-                         segyio.su.dt     : int(self.header['timeincrement']*1000)
-                         }
-                     f.trace[tr] = self.traces[il,:]
-                     tr += 1
-             f.bin.update(tsort=segyio.TraceSortingFormat.INLINE_SORTING)
-             #set sample time
-             f.bin.update(hdt=int(self.header['timeincrement']*1000))
+        spec = segyio.spec()
+        filename = exportpath
+        # to create a file from nothing, we need to tell segyio about the structure of
+        # the file, i.e. its inline numbers, crossline numbers, etc. You can also add
+        # more structural information, but offsets etc. have sensible defautls. This is
+        # the absolute minimal specification for a N-by-M volume
+        spec.sorting = 2
+        spec.format = 5
+        spec.samples = range(0,self.header['samplenumber'])
+        spec.ilines = range(0,self.header['tracenumber'])
+        spec.xlines = [0]
+        tr = 0
+        with segyio.create(filename, spec) as f:
+            for il in spec.ilines:
+                for xl in spec.xlines:
+                    f.header[tr] = {
+                        segyio.su.offset : 1,
+                        segyio.su.iline  : il,
+                        segyio.su.xline  : xl,
+                        segyio.su.dt     : int(self.header['timeincrement']*1000)
+                        }
+                    f.trace[tr] = self.traces[il,:]
+                    tr += 1
+            f.bin.update(tsort=segyio.TraceSortingFormat.INLINE_SORTING)
+            #set sample time
+            f.bin.update(hdt=int(self.header['timeincrement']*1000))
 

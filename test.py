@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 
 #for reading seismic formats: 
 import os
+from tqdm import tqdm
 
 
 
@@ -34,9 +35,14 @@ else:
 #copy the data    
 calibcopy=calibdata.copy()
 #upsample it
-calibcopy.time_resampling(16*512)
+#calibcopy.time_resampling(16*512)
 #plot it
 calibcopy.radarplot()
 
 
 
+calibcopy.freq_times_powersum(2)
+test=[]
+for i in tqdm(range(calibcopy.traces.shape[0])):
+    test.append(calibcopy.spectrofuncs(i))
+    
