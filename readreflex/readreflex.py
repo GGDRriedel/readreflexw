@@ -24,8 +24,8 @@ import segyio
 
 #specific scipy packages for heritage to filters: 
 from scipy.signal import butter, lfilter, spectrogram, welch,windows,hilbert
-from librosa.core import reassigned_spectrogram
-from librosa.core import reassigned_spectrogram as ifgram
+#from librosa.core import reassigned_spectrogram
+#from librosa.core import reassigned_spectrogram as ifgram
 from tqdm import tqdm
 
     
