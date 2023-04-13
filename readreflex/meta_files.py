@@ -16,7 +16,7 @@ import xml.etree.ElementTree as ET
 def readpicks(filelocation,nrows=None):
 
     filename, file_extension = os.path.splitext(filelocation)
-    print(file_extension)
+    #print(file_extension)
 # =============================================================================
 #     if file_extension=='.dat':
 #         df =pd.read_csv(filelocation,sep='\t',nrows=nrows)
