@@ -190,7 +190,7 @@ class radargram():
         traceincrement=struct.unpack('d', data[492:500])
         print('Trace increment',traceincrement[0]/distdimension_float , " Meters")
         timeincrement=struct.unpack('d', data[500:508])
-        print('Time increment: ',timeincrement)
+        print('Time increment: ',timeincrement/timedimension_float, " Seconds" )
         timebegin=struct.unpack('d', data[516:524])[0]
         print('Time start: ',timebegin)
         
