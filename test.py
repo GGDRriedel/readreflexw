@@ -12,3 +12,7 @@ from readreflex import readreflex
 testradargram = readreflex.radargram()
 
 testradargram.read_data_file(r"exampledata/testdata.DAT",version=9)
+
+print(testradargram.header)
+
+testradargram.radarplot()

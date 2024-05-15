@@ -189,8 +189,8 @@ class radargram():
           #these all change because v9 uses double
         traceincrement=struct.unpack('d', data[492:500])
         print('Trace increment',traceincrement[0]/distdimension_float , " Meters")
-        timeincrement=struct.unpack('d', data[500:508])
-        print('Time increment: ',timeincrement/timedimension_float, " Seconds" )
+        timeincrement=struct.unpack('d', data[500:508])[0]*timedimension_float
+        print('Time increment: ',timeincrement, " Seconds" )
         timebegin=struct.unpack('d', data[516:524])[0]
         print('Time start: ',timebegin)
         
@@ -204,22 +204,17 @@ class radargram():
         y_end=struct.unpack('d', data[580:588])[0]
         print("Y-coord End:", y_end)
         
-        xoffset=np.abs(x_end-x_start)
+        zerosample=int(timebegin/timeincrement)
         
-        timevec=np.arange(0,samplenumber*timeincrement[0],timeincrement[0])
-        description= '''Samplenumber: Number of samples in a trace; 
-                    tracenumber: Number of Traces in the Radargram,  
-                    formatcode: 2 - 16 bit small integer 3 - 32 bit float 
-                    traceincrement: distance increment 
-                    timeincrement: sampling time 1/f 
-                    timebegin: Set from processing, time when material in radargram begins 
-                    timevec: Vector of timesteps 
-                    xoffset: X-Profile offset, assumed to be only dimension for now
-                    description: this text'''
+        xoffset=np.abs(x_end-x_start)
+        xoffset=x_start
+        
+        timevec=np.arange(0,samplenumber*timeincrement,timeincrement)
+        description= 'Samplenumber: Number of samples in a trace; Zerosample: Sample of the first reflection point; tracenumber: Number of Traces in the Radargram, formatcode: 2 - 16 bit small integer 3 - 32 bit float                     traceincrement: distance increment                     timeincrement: sampling time 1/f                     timebegin: Set from processing, time when material in radargram begins                     timevec: Vector of timesteps                     xoffset: X-Profile offset, assumed to be only dimension for now                    description: this text'
                         
         
-        header={"samplenumber":samplenumber, "tracenumber":tracenumber,"formatcode":formatcode,"traceincrement":traceincrement[0],
-            "timeincrement":timeincrement[0],"timebegin":timebegin,"timedimension":timedimension,"time":timevec,"xoffset":xoffset,"description": description}
+        header={"samplenumber":samplenumber, "zerosample":zerosample, "tracenumber":tracenumber,"formatcode":formatcode,"traceincrement":traceincrement[0],
+            "timeincrement":timeincrement,"timebegin":timebegin,"timedimension":timedimension,"time":timevec,"xoffset":xoffset,"description": description}
         self.header=header    
          
     
