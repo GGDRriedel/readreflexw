@@ -113,9 +113,17 @@ class radargram():
         
         #description of the header goes in here
         description= 'Samplenumber: Number of samples in a trace; Zerosample: Sample of the first reflection point; tracenumber: Number of Traces in the Radargram, formatcode: 2 - 16 bit small integer 3 - 32 bit float                     traceincrement: distance increment                     timeincrement: sampling time 1/f                     timebegin: Set from processing, time when material in radargram begins                     timevec: Vector of timesteps                     xoffset: X-Profile offset, assumed to be only dimension for now                    description: this text'
-                        
         
-        header={"samplenumber":samplenumber, "zerosample":zerosample, "tracenumber":tracenumber,"formatcode":formatcode,"traceincrement":traceincrement[0],
+        while True:  # Loop until valid input is received
+            try:
+                xoffset = float(input("V8 offset and coordinates are not documented and readable, please input a numeric in meters:"))
+                break  # Exit the loop if input is valid
+            except ValueError:
+                print("Invalid input. Please enter a whole number for your age.")
+
+
+        
+        header={"samplenumber":samplenumber, "zerosample":zerosample, "tracenumber":tracenumber,"formatcode":formatcode,"traceincrement":traceincrement,
             "timeincrement":timeincrement,"timebegin":timebegin,"timedimension":timedimension,"time":timevec,"xoffset":xoffset,"description": description}
         self.header=header    
         
