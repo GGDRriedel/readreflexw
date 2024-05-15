@@ -82,7 +82,15 @@ class radargram():
             data = f.read()
        #print(data)
 
-     
+        distdict={'METER':1,'CM':1E-2,'MM':1E-3}
+        distdimension=data[253:258].decode()
+        distdimension_float=distdict[distdimension]
+        
+         #translate time dimension into numbers
+        timedict={'ns':1E-9,'ms':1E-3,'s':1}
+        timedimension= data[343:345].decode()
+        timedimension_float=timedict[timedimension]
+        
         samplenumber=int.from_bytes(data[420:422],byteorder='little')
     
         tracenumber=int.from_bytes(data[452:456],byteorder='little') 
@@ -90,30 +98,26 @@ class radargram():
         formatcode=int.from_bytes(data[436:440],byteorder='little') 
     
       
-        traceincrement=struct.unpack('f', data[460:464])
+        traceincrement=struct.unpack('f', data[460:464])[0]
         #print(traceincrement)
-        timeincrement=struct.unpack('f', data[464:468])
+        timeincrement=struct.unpack('f', data[464:468])[0]*timedimension_float
         #print(timeincrement)
         
-        timebegin=struct.unpack('f', data[472:476])
+        timebegin=struct.unpack('f', data[472:476])[0]*timedimension_float
         
         #print(timebegin)
         #span up a vecotor of timesteps
-        timevec=np.arange(0,samplenumber*timeincrement[0],timeincrement[0])
+        timevec=np.arange(0,samplenumber*timeincrement,timeincrement)
+        
+        zerosample=int(timebegin/timeincrement)
+        
         #description of the header goes in here
-        description= '''Samplenumber: Number of samples in a trace; 
-                    tracenumber: Number of Traces in the Radargram,  
-                    formatcode: 2 - 16 bit small integer 3 - 32 bit float 
-                    traceincrement: distance increment 
-                    timeincrement: sampling time 1/f 
-                    timebegin: Set from processing, time when material in radargram begins 
-                    timevec: Vector of timesteps 
-                    description: this text'''
+        description= 'Samplenumber: Number of samples in a trace; Zerosample: Sample of the first reflection point; tracenumber: Number of Traces in the Radargram, formatcode: 2 - 16 bit small integer 3 - 32 bit float                     traceincrement: distance increment                     timeincrement: sampling time 1/f                     timebegin: Set from processing, time when material in radargram begins                     timevec: Vector of timesteps                     xoffset: X-Profile offset, assumed to be only dimension for now                    description: this text'
                         
         
-        header={"samplenumber":samplenumber, "tracenumber":tracenumber,"formatcode":formatcode,"traceincrement":traceincrement[0],
-            "timeincrement":timeincrement[0],"timebegin":timebegin[0],"time":timevec,"description": description}
-        self.header=header
+        header={"samplenumber":samplenumber, "zerosample":zerosample, "tracenumber":tracenumber,"formatcode":formatcode,"traceincrement":traceincrement[0],
+            "timeincrement":timeincrement,"timebegin":timebegin,"timedimension":timedimension,"time":timevec,"xoffset":xoffset,"description": description}
+        self.header=header    
         
     def read_header_file_v9(self,filepath): 
         
