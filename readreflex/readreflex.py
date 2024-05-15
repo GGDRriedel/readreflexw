@@ -74,7 +74,7 @@ class radargram():
             procnumber=stringlist[-1][-3:-1]
             parfile=stringlist[-2]
     
-            parfilefull=parfile+'.'+procnumber+'R'
+            parfilefull="."+parfile+'.'+procnumber+'R'
         #parfilefull=parfile+'.PAR'
     
         with open(parfilefull, "rb") as f:
