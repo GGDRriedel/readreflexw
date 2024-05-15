@@ -37,13 +37,14 @@ class radargram():
     #initialization to set up overtake of fileformats
     #for later bookkeeping, unused yet
     def __init__(self,fileformat=None):
+        print("Initialized Radargram object")
         #this is unfinished and not used
-        if fileformat is not None and fileformat.lower() in {"**r", "**t"}:
-            self.fileformat = "**R"
+#        if fileformat is not None and fileformat.lower() in {"**r", "**t"}:
+#            self.fileformat = "**R"
         
     
-        else:
-            print('No file format was given, assuming .par')
+#        else:
+#            print('No file format was given, assuming .par')
             
     # get some functions for copying itself correctly 
     def copy(self): 
@@ -187,7 +188,7 @@ class radargram():
             formatcode=newcode
           #these all change because v9 uses double
         traceincrement=struct.unpack('d', data[492:500])
-        print('Trace increment',traceincrement[0])
+        print('Trace increment',traceincrement[0]/distdimension_float , " Meters")
         timeincrement=struct.unpack('d', data[500:508])
         print('Time increment: ',timeincrement)
         timebegin=struct.unpack('d', data[516:524])[0]
@@ -285,7 +286,7 @@ class radargram():
         #old h5file=filepath.split(".")[0]+'.hdf5'
         h5file=filepath+'.hdf5'
         with  h5py.File(h5file, 'w') as f:
-            dset = f.create_dataset("radargram", data=self.traces, dtype='f')
+            dset = f.create_dataset("radargram", data=self.traces, dtype='f',compression="gzip")
             for name, value in self.header.items():
                 #print(name)
                 dset.attrs[name]=value
@@ -333,6 +334,8 @@ class radargram():
                 _timebegin=dataset.attrs['timebegin']
                 _time=dataset.attrs['time']
                 _description=dataset.attrs['description']
+                #offset does not always exist so we need to make sure to set it
+                #by hand
                 while True:
                     try: 
                         _xoffset=dataset.attrs['xoffset']
@@ -893,11 +896,11 @@ class radargram():
                         segyio.su.offset : 1,
                         segyio.su.iline  : il,
                         segyio.su.xline  : xl,
-                        segyio.su.dt     : int(self.header['timeincrement']*1000)
+                        segyio.su.dt     : int(self.header['timeincrement'])
                         }
                     f.trace[tr] = self.traces[il,:]
                     tr += 1
             f.bin.update(tsort=segyio.TraceSortingFormat.INLINE_SORTING)
             #set sample time
-            f.bin.update(hdt=int(self.header['timeincrement']*1000))
+            f.bin.update(hdt=int(self.header['timeincrement']))
 
