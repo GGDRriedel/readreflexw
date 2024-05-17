@@ -293,7 +293,7 @@ class radargram():
         #old h5file=filepath.split(".")[0]+'.hdf5'
         h5file=filepath+'.hdf5'
         with  h5py.File(h5file, 'w') as f:
-            dset = f.create_dataset("radargram", data=self.traces, dtype='f',compression="gzip")
+            dset = f.create_dataset("radargram", data=self.traces, dtype='f',compression="gzip", compression_opts=9)
             for name, value in self.header.items():
                 #print(name)
                 dset.attrs[name]=value
