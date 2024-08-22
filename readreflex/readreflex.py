@@ -251,7 +251,7 @@ class radargram():
         with open(filepath, "rb") as f:
             # Read the whole file at once
             datdata = f.read()
-            #print(data)
+            print("Reading File {}".format(filepath))
             self.bytedata =datdata
             if version==9:
                 self.read_header_file_v9(filepath=filepath)
@@ -295,7 +295,8 @@ class radargram():
             _bytetracesize=156+self.header['samplenumber']*2
             
         self.traces=np.empty([self.header["tracenumber"],self.header["samplenumber"]])
-        for i,j in enumerate(range(self.header["tracenumber"])):
+        #NOTE:THIS COULD BE PARALLELIZED FOR FASTER READING
+        for i,j in tqdm(enumerate(range(self.header["tracenumber"])),total=self.header["tracenumber"]):
             self.traces[i,:]=self.__readtrace_newformat(self.bytedata[i*_bytetracesize:(i+1)*_bytetracesize])
             #print([i,j])
     def save(self,filepath):
