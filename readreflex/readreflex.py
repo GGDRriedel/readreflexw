@@ -99,29 +99,30 @@ class radargram():
         timedict={'ns':1E-9,'ms':1E-3,'s':1}
         timedimension= data[343:345].decode()
         timedimension_float=timedict[timedimension]
-        
         samplenumber=int.from_bytes(data[420:422],byteorder='little')
-    
         tracenumber=int.from_bytes(data[452:456],byteorder='little') 
-    
         formatcode=int.from_bytes(data[436:440],byteorder='little') 
-    
-      
         traceincrement=struct.unpack('f', data[460:464])[0]
         #print(traceincrement)
-        timeincrement=struct.unpack('f', data[464:468])[0]*timedimension_float
+        timeincrement=struct.unpack('f', data[464:468])[0]#*timedimension_float
         #print(timeincrement)
-        
-        timebegin=struct.unpack('f', data[472:476])[0]*timedimension_float
-        
+        #time for inner working is kept on time dimension
+        timebegin=struct.unpack('f', data[472:476])[0]#*timedimension_float
         #print(timebegin)
         #span up a vecotor of timesteps
         timevec=np.arange(0,samplenumber*timeincrement,timeincrement)
-        
         zerosample=int(timebegin/timeincrement)
-        
         #description of the header goes in here
-        description= 'Samplenumber: Number of samples in a trace; Zerosample: Sample of the first reflection point; tracenumber: Number of Traces in the Radargram, formatcode: 2 - 16 bit small integer 3 - 32 bit float                     traceincrement: distance increment                     timeincrement: sampling time 1/f                     timebegin: Set from processing, time when material in radargram begins                     timevec: Vector of timesteps                     xoffset: X-Profile offset, assumed to be only dimension for now                    description: this text'
+        description= 'Samplenumber: Number of samples in a trace; Zerosample: Sample of the first reflection point ;\n\
+                    tracenumber: Number of Traces in the Radargram; \n \
+                    formatcode: 2 - 16 bit small integer 3 - 32 bit float ; \n\
+                    traceincrement: distance increment; \n\
+                    timeincrement: sampling time 1/f;\n\
+                    timedimension: the unit of the time; \n\
+                    timebegin: Set from processing, time when material in radargram begins ;\n\
+                    timevec: Vector of timesteps ;\n\
+                    xoffset: X-Profile offset, assumed to be only dimension for now;\n\
+                    description: this text'
         
         while True:  # Loop until valid input is received
             try:
@@ -132,8 +133,17 @@ class radargram():
 
 
         
-        header={"samplenumber":samplenumber, "zerosample":zerosample, "tracenumber":tracenumber,"formatcode":formatcode,"traceincrement":traceincrement,
-            "timeincrement":timeincrement,"timebegin":timebegin,"timedimension":timedimension,"time":timevec,"xoffset":xoffset,"description": description}
+        header={"samplenumber":samplenumber,
+                "zerosample":zerosample,
+                "tracenumber":tracenumber,
+                "formatcode":formatcode,
+                "traceincrement":traceincrement,
+                "timeincrement":timeincrement,
+                "timebegin":timebegin,
+                "timedimension":timedimension,
+                "time":timevec,
+                "xoffset":xoffset,
+                "description": description}
         self.header=header    
         
     def read_header_file_v9(self,filepath): 
@@ -210,9 +220,9 @@ class radargram():
           #these all change because v9 uses double
         traceincrement=struct.unpack('d', data[492:500])
         print('Trace increment',traceincrement[0]/distdimension_float , " Meters")
-        timeincrement=struct.unpack('d', data[500:508])[0]*timedimension_float
+        timeincrement=struct.unpack('d', data[500:508])[0]#*timedimension_float
         print('Time increment: ',timeincrement, " Seconds" )
-        timebegin=struct.unpack('d', data[516:524])[0]*timedimension_float
+        timebegin=struct.unpack('d', data[516:524])[0]#*timedimension_float
         print('Time start: ',timebegin)
         
         x_start=struct.unpack('d', data[548:556])[0]
@@ -231,11 +241,30 @@ class radargram():
         xoffset=x_start
         
         timevec=np.arange(0,samplenumber*timeincrement,timeincrement)
-        description= 'Samplenumber: Number of samples in a trace; Zerosample: Sample of the first reflection point; tracenumber: Number of Traces in the Radargram, formatcode: 2 - 16 bit small integer 3 - 32 bit float                     traceincrement: distance increment                     timeincrement: sampling time 1/f                     timebegin: Set from processing, time when material in radargram begins                     timevec: Vector of timesteps                     xoffset: X-Profile offset, assumed to be only dimension for now                    description: this text'
+        description= 'Samplenumber: Number of samples in a trace; Zerosample: Sample of the first reflection point ;\n\
+                    tracenumber: Number of Traces in the Radargram; \n \
+                    formatcode: 2 - 16 bit small integer 3 - 32 bit float ; \n\
+                    traceincrement: distance increment; \n\
+                    timeincrement: sampling time 1/f;\n\
+                    timedimension: the unit of the time; \n\
+                    timebegin: Set from processing, time when material in radargram begins ;\n\
+                    timevec: Vector of timesteps ;\n\
+                    xoffset: X-Profile offset, assumed to be only dimension for now;\n\
+                    description: this text'
                         
         
-        header={"samplenumber":samplenumber, "zerosample":zerosample, "tracenumber":tracenumber,"formatcode":formatcode,"traceincrement":traceincrement[0],
-            "timeincrement":timeincrement,"timebegin":timebegin,"timedimension":timedimension,"time":timevec,"xoffset":xoffset,"description": description}
+        header={"samplenumber":samplenumber,
+                "zerosample":zerosample,
+                "tracenumber":tracenumber,
+                "formatcode":formatcode,
+                "traceincrement":traceincrement[0],
+                "timeincrement":timeincrement,
+                "timebegin":timebegin,
+                "timedimension":timedimension,
+                "time":timevec,
+                "xoffset":xoffset,
+                "description": description}
+        
         self.header=header    
          
     
@@ -299,6 +328,7 @@ class radargram():
         for i,j in tqdm(enumerate(range(self.header["tracenumber"])),total=self.header["tracenumber"]):
             self.traces[i,:]=self.__readtrace_newformat(self.bytedata[i*_bytetracesize:(i+1)*_bytetracesize])
             #print([i,j])
+  
     def save(self,filepath):
         #old h5file=filepath.split(".")[0]+'.hdf5'
         h5file=filepath+'.hdf5'
