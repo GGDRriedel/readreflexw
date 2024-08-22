@@ -21,6 +21,8 @@ from scipy.signal import resample
 import copy
 import segyio
 
+from pathlib import Path
+
 
 #specific scipy packages for heritage to filters: 
 from scipy.signal import butter, lfilter, spectrogram, welch,windows,hilbert
@@ -65,17 +67,24 @@ class radargram():
         
         print("reading file: " + filepath)
         
-        #check if we are dealing with raw .at and .par files 
-        stringlist= filepath.split('.')
-        if stringlist[-1]=="DAT":
-             parfilefull=stringlist[0]+'.'+"PAR"
+        
+        #turn path into object
+        object_path=Path(filepath)
+        #get suffix without care for relative or absolute
+        current_suffix = object_path.suffix
+        
+        #create new suffix
+        if current_suffix=="DAT":
+            target_suffix="PAR"
         else:
-        # get file ending number wich according to documentation can only be 2 digits of numbers + the rest T of the ".dat"
-            procnumber=stringlist[-1][-3:-1]
-            parfile=stringlist[-2]
-    
-            parfilefull="."+parfile+'.'+procnumber+'R'
-        #parfilefull=parfile+'.PAR'
+            target_suffix=current_suffix[0:3]+'R'
+        
+        #create new file path and reolace parfilefull for opening
+        
+        parfilefull= object_path.with_suffix(target_suffix)
+        
+            
+        
     
         with open(parfilefull, "rb") as f:
        # Read the whole file at once
@@ -119,7 +128,7 @@ class radargram():
                 xoffset = float(input("V8 offset and coordinates are not documented and readable, please input a numeric in meters:"))
                 break  # Exit the loop if input is valid
             except ValueError:
-                print("Invalid input. Please enter a whole number for your age.")
+                print("Invalid input. Please enter a whole number for your offset.")
 
 
         
@@ -137,22 +146,22 @@ class radargram():
         
         ## NEEDS UNIX/WINDOWS PATH HANDLING
     
-        stringlist= filepath.split('.')
         
-        #check if we are dealing with raw .at and .par files 
-        if stringlist[-1]=="DAT":
-            #check if relative path: 
-            if stringlist[0]=='':
-                parfilefull='.'+stringlist[1]+'.'+"PAR"
-            else:
-                parfilefull=stringlist[0]+'.'+"PAR"
+        #turn path into object
+        object_path=Path(filepath)
+        #get suffix without care for relative or absolute
+        current_suffix = object_path.suffix
+        
+        #create new suffix
+        if current_suffix=="DAT":
+            target_suffix="PAR"
         else:
-            # get file ending number wich according to documentation can only be 2 digits of numbers + the rest T of the ".dat"
-            procnumber=stringlist[-1][-3:-1]
-            parfile=stringlist[-2]
-    
-            parfilefull=parfile+'.'+procnumber+'R'
-        #parfilefull=parfile+'.PAR'
+            target_suffix=current_suffix[0:3]+'R'
+        
+        #create new file path and reolace parfilefull for opening
+        
+        parfilefull= object_path.with_suffix(target_suffix)
+        
     
         with open(parfilefull, "rb") as f:
        # Read the whole file at once
