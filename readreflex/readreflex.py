@@ -380,6 +380,12 @@ class radargram():
                 _timeincrement=dataset.attrs['timeincrement']
                 _timebegin=dataset.attrs['timebegin']
                 _time=dataset.attrs['time']
+                try:
+                    _timedimension=dataset.attrs["timedimension"]
+                except:
+                    print("HDF has no timedmensoon attribute, you might want to check your file version")
+                    _timedimension="Not set"
+                        
                 _description=dataset.attrs['description']
                 #offset does not always exist so we need to make sure to set it
                 #by hand
@@ -395,8 +401,15 @@ class radargram():
                             except ValueError:
                                 print("Error! This doesn't seem to be an Integer Number, try again!" )
             #timevec=np.arange(0,headerdata["samplenumber"]*headerdata["traceincrement"],headerdata["timeincrement"])
-                self.header={"samplenumber":_samplenumber, "tracenumber":_tracenumber,"formatcode":_formatcode,"traceincrement":_traceincrement,
-                        "timeincrement":_timeincrement,"timebegin":_timebegin,"time":_time,"description":_description,"xoffset":_xoffset}
+                self.header={"samplenumber":_samplenumber,
+                             "tracenumber":_tracenumber,
+                             "formatcode":_formatcode,
+                             "traceincrement":_traceincrement,
+                             "timeincrement":_timeincrement,
+                             "timedimension":_timedimension,
+                             "timebegin":_timebegin,
+                             "time":_time,"description":_description,
+                             "xoffset":_xoffset}
                 print("Found and loaded the file!")
         except:
             print("Seems like there is no HDF5 file present or structure is not according to what's expected, check speeling please")
