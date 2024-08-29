@@ -9,7 +9,7 @@ https://www.sandmeier-geo.de/reflexw.html
 
 """
 
-import pandas
+import pandas as pd
 import struct 
 import numpy as np
 import h5py
@@ -338,6 +338,21 @@ class radargram():
                 #print(name)
                 dset.attrs[name]=value
 
+    def set_metadata(self,metadataframe:pd.DataFrame,coordinatenames=["X","Y","Z"]): 
+        ''' this sets a metadata frame attached to the radargram
+        metadataframe:          A pandas Dataframe
+        coordinatenames:        ["X,Y,Z"] Two strings for the coordinates'''
+        self.metadataframe=metadataframe
+        if(coordinatenames[0] in metadataframe and coordinatenames[1] in metadataframe): 
+            print("Found Coordinates in Metaframe")
+            if coordinatenames[2] in metadataframe:
+               self.coordinates=metadataframe[coordinatenames[0:3]]    
+            else:
+               self.coordinates=metadataframe[coordinatenames[0:2]]    
+        else: 
+            print("No coordinates provided")
+
+
     def load_seismics(self,filepath): 
         ''' Reads all kinds of seismic file formats inherited from \\
     the obspy library
@@ -413,7 +428,13 @@ class radargram():
                 print("Found and loaded the file!")
         except:
             print("Seems like there is no HDF5 file present or structure is not according to what's expected, check speeling please")
-          
+        #load possible metadata, pandas dataframe
+        try:
+            self.metadataframe=pd.read_hdf(h5file)
+        except: 
+            print("Could not read any metadata frame")  
+            
+            
     def get_output_data(self,filename, rxnumber, rxcomponent,xstep):
         '''   
         reads the output data of GPRmax-Simulations
