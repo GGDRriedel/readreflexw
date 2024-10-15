@@ -163,8 +163,8 @@ class radargram():
         current_suffix = object_path.suffix
         
         #create new suffix
-        if current_suffix=="DAT":
-            target_suffix="PAR"
+        if current_suffix==".DAT":
+            target_suffix=".PAR"
         else:
             target_suffix=current_suffix[0:3]+'R'
         
