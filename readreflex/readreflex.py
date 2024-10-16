@@ -1154,4 +1154,88 @@ class radargram():
             return gained_trace
         
         
+    
+    def apply_agc2D(self,inplace=True,window=10):
+        '''
+        agc:    Applies an AGC filter to the dataset
+        Inspired by     https://github.com/nvinard/seismicToolBox/blob/master/seismicToolBox.py
+        
+        Usage: 
+                self.apply_agc(tracenumber,inplace, window)
+            
+            
+        Parameters
+        -------------
+       
+            
+        inplace: bool
+            Manipulate the traces or return new object
+        
+        window: integer
+            AGC window in samples, NOT TIME
+            
+        Returns
+        -------------
+        traces: nd.array
+            Array with agc-gained trace values of the radargram
+     
+        
+        '''
+        from scipy.interpolate import interp1d
+        def rms(x):
+            return np.sqrt(np.mean(x**2))
+        
+        
+        data=self.traces
+        
+        #put it in a dataframe so we can use its methods
+        #data = pd.DataFrame(data=self.traces)
+        
+        #rms for now
+        
+        # determine time sampling and num of samples
+        
+        N_T,N = self.traces.shape
+        
+
+       # determine number of time gates to use
+        gates_num = int((N//window)+1)
+       
+       # initialise indecies for the coners of the gate
+        gate_1st_ind = 0
+        gate_2nd_ind = window
+        
+        # construct lists for begining and ends of tome gates
+        start_gate_inds = [(gate_1st_ind + i*gate_2nd_ind) for i in range(gates_num)]
+        end_gate_inds = [start_gate_inds[j] + gate_2nd_ind  for j in range(gates_num)]
+        end_gate_inds[-1] = N
+        
+        # initialise middle gate time and gain function arrays
+        t_rms_values   = np.zeros((N_T,gates_num+2))
+        amp_rms_values = np.zeros((N_T,gates_num+2))
+  
+        # loop over every gate
+        ivalue = 1
+        for istart, iend in zip(start_gate_inds, end_gate_inds):
+            t_rms_values[:,ivalue]    = 0.5*(istart + iend)
+            amp_rms_values[:,ivalue] = np.sqrt(np.mean(np.square(data[:,istart:iend]),axis=1))
+            ivalue += 1
+        
+        
+        # set side values for interpolation
+        t_rms_values[:,-1] = N
+        amp_rms_values[:,0] = amp_rms_values[:,1]
+        amp_rms_values[:,-1] = amp_rms_values[:,-2]
+        
+        # linear interpolation for the rms amp function for every sample N
+        rms_interper= interp1d(t_rms_values[1,:], amp_rms_values,axis=1 )
+        rms_func = rms_interper(range(N))
+        
+        # calculate the gained trace
+        gained_traces = data*(np.sqrt(np.mean(np.square(data)))/rms_func)
+        if inplace==True: 
+            self.traces=gained_traces
+        else: 
+            return gained_traces
+    
        

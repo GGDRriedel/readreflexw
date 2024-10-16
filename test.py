@@ -25,14 +25,17 @@ testradargram.shortening(0,256)
 
 start_time = timeit.default_timer()
 for i in range(testradargram.header["tracenumber"]): 
+    testradargram.apply_agc_pandas(tracenumber=i,inplace=False)
+elapsed = timeit.default_timer() - start_time
+print(elapsed) 
+
+start_time = timeit.default_timer()
+for i in range(testradargram.header["tracenumber"]): 
     testradargram.apply_agc(tracenumber=i,inplace=False)
 elapsed = timeit.default_timer() - start_time
 print(elapsed)
 
-
-
 start_time = timeit.default_timer()
-for i in range(testradargram.header["tracenumber"]): 
-    testradargram.apply_agc_pandas(tracenumber=i,inplace=False)
+testradargram.apply_agc2D(inplace=False)
 elapsed = timeit.default_timer() - start_time
 print(elapsed)
