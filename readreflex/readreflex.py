@@ -1187,12 +1187,7 @@ class radargram():
         
         
         data=self.traces
-        
-        #put it in a dataframe so we can use its methods
-        #data = pd.DataFrame(data=self.traces)
-        
-        #rms for now
-        
+                
         # determine time sampling and num of samples
         
         N_T,N = self.traces.shape
@@ -1205,30 +1200,30 @@ class radargram():
         gate_1st_ind = 0
         gate_2nd_ind = window
         
-        # construct lists for begining and ends of tome gates
+        # construct lists for begining and ends of time gates
         start_gate_inds = [(gate_1st_ind + i*gate_2nd_ind) for i in range(gates_num)]
         end_gate_inds = [start_gate_inds[j] + gate_2nd_ind  for j in range(gates_num)]
         end_gate_inds[-1] = N
         
         # initialise middle gate time and gain function arrays
-        t_rms_values   = np.zeros((N_T,gates_num+2))
+        t_rms_values   = np.zeros(gates_num+2)
         amp_rms_values = np.zeros((N_T,gates_num+2))
   
         # loop over every gate
         ivalue = 1
         for istart, iend in zip(start_gate_inds, end_gate_inds):
-            t_rms_values[:,ivalue]    = 0.5*(istart + iend)
+            t_rms_values[ivalue]    = 0.5*(istart + iend)
             amp_rms_values[:,ivalue] = np.sqrt(np.mean(np.square(data[:,istart:iend]),axis=1))
             ivalue += 1
         
         
         # set side values for interpolation
-        t_rms_values[:,-1] = N
+        t_rms_values[-1] = N
         amp_rms_values[:,0] = amp_rms_values[:,1]
         amp_rms_values[:,-1] = amp_rms_values[:,-2]
         
         # linear interpolation for the rms amp function for every sample N
-        rms_interper= interp1d(t_rms_values[1,:], amp_rms_values,axis=1 )
+        rms_interper= interp1d(t_rms_values, amp_rms_values,axis=1 )
         rms_func = rms_interper(range(N))
         
         # calculate the gained trace
