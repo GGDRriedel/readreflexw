@@ -21,3 +21,8 @@ testradargram.radarplot()
 #note how it plots from the Beginning time set in the file
 
 testradargram.traces.shape
+
+
+for i in range(testradargram.header["tracenumber"]): 
+    testradargram.apply_agc(tracenumber=i,inplace=True)
+    
