@@ -8,7 +8,7 @@ https://www.sandmeier-geo.de/reflexw.html
 
 
 """
-
+from ....GPRPy.gprpy   import gprpy
 import pandas as pd
 import struct 
 import numpy as np

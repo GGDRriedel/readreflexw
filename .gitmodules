@@ -1,0 +1,3 @@
+[submodule "readreflex/GPRpy"]
+	path = readreflex/GPRpy
+	url = https://github.com/NSGeophysics/GPRPy.git
