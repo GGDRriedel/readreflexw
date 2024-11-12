@@ -29,6 +29,7 @@ from scipy.signal import butter, lfilter, spectrogram, welch,windows,hilbert
 #from librosa.core import reassigned_spectrogram
 #from librosa.core import reassigned_spectrogram as ifgram
 from tqdm import tqdm
+tqdm.pandas()
 
     
 ## radargram reader-class
@@ -74,8 +75,8 @@ class radargram():
         current_suffix = object_path.suffix
         
         #create new suffix
-        if current_suffix=="DAT":
-            target_suffix="PAR"
+        if current_suffix==".DAT":
+            target_suffix=".PAR"
         else:
             target_suffix=current_suffix[0:3]+'R'
         
@@ -292,6 +293,7 @@ class radargram():
     def __readtrace_newformat(self,byteobject):
     # reads a trace in the given byteobject 
     # byteobject should be of Formatcode 3 (32bit floating point int)
+        ''' returns array of trace amplitudes and a time ( if formatcode is 3)'''
     
     
         self._TraceNo=int.from_bytes(byteobject[0:4],byteorder='little')
@@ -305,10 +307,19 @@ class radargram():
     #header takes 158 bytes, always! (at least it should)
         if self.header["formatcode"]==3:
             bytelength=4
-            for j,i in enumerate(np.arange(158,158+self.NoOfSamples*bytelength,bytelength)):
-                    tracedata[j]=struct.unpack('f', byteobject[i:i+bytelength])[0]
-                    #print(tracedata[j])
-            return tracedata
+            timecollect=struct.unpack('d', byteobject[114:122])[0]
+            #test approach: create c type string that represents all of data 
+            # instead of looping over byte object
+            ctype=self.NoOfSamples*'f'
+            tracedata=struct.unpack(ctype, byteobject[158:158+self.NoOfSamples*bytelength])
+            t_y,t_x=struct.unpack('2d', byteobject[54:70])
+            t_z=struct.unpack('d', byteobject[38:46])[0]
+# =============================================================================
+#             for j,i in enumerate(np.arange(158,158+self.NoOfSamples*bytelength,bytelength)):
+#                     tracedata[j]=struct.unpack('f', byteobject[i:i+bytelength])[0]
+#                     #print(tracedata[j])
+# =============================================================================
+            return tracedata,timecollect,t_x,t_y,t_z
         else:
             bytelength=2
             for j,i in enumerate(np.arange(156,156+self.NoOfSamples*bytelength,bytelength)):
@@ -324,10 +335,16 @@ class radargram():
             _bytetracesize=156+self.header['samplenumber']*2
             
         self.traces=np.empty([self.header["tracenumber"],self.header["samplenumber"]])
+        self.timecollect=np.empty(self.header["tracenumber"])
+        self.shot_x=np.empty(self.header["tracenumber"])
+        self.shot_y=np.empty(self.header["tracenumber"])
+        self.shot_z=np.empty(self.header["tracenumber"])
         #NOTE:THIS COULD BE PARALLELIZED FOR FASTER READING
         for i,j in tqdm(enumerate(range(self.header["tracenumber"])),total=self.header["tracenumber"]):
-            self.traces[i,:]=self.__readtrace_newformat(self.bytedata[i*_bytetracesize:(i+1)*_bytetracesize])
+            self.traces[i,:],self.timecollect[i],self.shot_x[i],self.shot_y[i],self.shot_z[i]=self.__readtrace_newformat(self.bytedata[i*_bytetracesize:(i+1)*_bytetracesize])
             #print([i,j])
+        dataframe=pd.DataFrame(data={'X':self.shot_x,'Y':self.shot_y,'Z':self.shot_z,'timecollect':self.timecollect})
+        self.set_metadata(dataframe)
   
     def save(self,filepath):
         #old h5file=filepath.split(".")[0]+'.hdf5'
@@ -337,6 +354,10 @@ class radargram():
             for name, value in self.header.items():
                 #print(name)
                 dset.attrs[name]=value
+        #save the metadata                
+        if hasattr(self, 'metadataframe'):
+                self.metadataframe.to_hdf(filepath+'.hdf5',key="metadataframe")
+            
 
     def set_metadata(self,metadataframe:pd.DataFrame,coordinatenames=["X","Y","Z"]): 
         ''' this sets a metadata frame attached to the radargram
@@ -351,6 +372,7 @@ class radargram():
                self.coordinates=metadataframe[coordinatenames[0:2]]    
         else: 
             print("No coordinates provided")
+            
 
 
     def load_seismics(self,filepath): 
@@ -379,7 +401,13 @@ class radargram():
     def load_hdf5(self,filepath):       
         ''' Loads HDF5 files'''
         #h5file=filepath.split(".")[0]+'.hdf5'
-        h5file=filepath+'.hdf5'
+        path=Path(filepath)
+        if path.suffix!='.hdf5':
+            print("File ending is not .hdf5 , trying to append ending")
+            h5file=path.as_posix()+'.hdf5'
+        else: 
+            h5file=filepath
+        
         print("Looking for "+h5file)
         try:
             with  h5py.File(h5file, 'r+') as f:
@@ -946,7 +974,74 @@ class radargram():
         taps = custom_filter
         self.traces = lfilter(taps, 1, self.traces,axis=1)
         self.time_shortening(N,N+old_resample_length)
+    
         
+    def background_removal(self,inplace=False): 
+        ''' 
+        Subtracts the total horizontal mean from the data
+        ''' 
+        data=pd.DataFrame(data=self.traces)
+        if inplace==True:
+            self.traces=self.traces-data.mean(axis=0).values
+        else:
+            return self.traces-data.mean(axis=0).values
+        
+    def running_background_removal(self,tracewindow=10,inplace=False):
+        ''' 
+        Averages the tracewindow (symmetrically) around each trace and subtracts it
+        from the traces
+        
+        '''
+        
+        
+        data=pd.DataFrame(data=self.traces)
+        #debugplot
+        
+        rollingmean=data.rolling(window=tracewindow,min_periods=1,center=True,axis=0).mean()
+        if inplace==True:
+            self.traces=self.traces-rollingmean.values
+        else: 
+            return self.traces-rollingmean.values
+        
+    
+
+    def apply_agc(self, window_size=1,inplace=False):
+        """
+        Apply a Quick and Dirty   Automatic Gain Control (AGC) filter to GPR data.
+        Gain ist based on Hilbert Envelope convolution
+        
+        Parameters:
+            window_size (int): Window size for the AGC (in samples).
+            
+        Returns:
+            numpy.ndarray: AGC filtered data.
+        """
+        from scipy.signal import hilbert
+        data=self.traces
+        # Initialize the output array
+        agc_data = np.zeros_like(data)
+        
+        # Loop over each trace
+        for trace in range(data.shape[0]):
+            # Calculate the amplitude envelope of the trace
+            #envelope = np.abs(data[trace,:])
+            h_envelope=np.abs(hilbert(data[trace,:]))
+            # Apply a moving average to the envelope to get the gain factor
+            gain = np.convolve(h_envelope, np.ones(window_size) / window_size, mode='same')
+            
+            # Avoid division by zero
+            gain[gain == 0] = 1e-10
+            
+            # Apply the gain to the trace
+            agc_data[ trace,:] = data[trace,:] / gain
+        
+        if inplace==True: 
+            self.traces=agc_data
+        else:
+            
+            return agc_data
+
+    
     def export_csv(self,exportpath='export.csv'): 
         np.savetxt(fname=exportpath,X=self.traces,delimiter=',')
         pieces=exportpath.split('.')
@@ -983,254 +1078,9 @@ class radargram():
                     tr += 1
             f.bin.update(tsort=segyio.TraceSortingFormat.INLINE_SORTING)
             #set sample time
-            f.bin.update(hdt=int(self.header['timeincrement']))
+            if self.header['timedimension'] == 'ns':
+                f.bin.update(hdt=int(self.header['timeincrement']*1E6))
+            elif self.header['timedimension'] == 'ms':
+                f.bin.update(hdt=int(self.header['timeincrement']))
+                                 
 
-    def apply_agc(self,tracenumber:int,inplace=True,window=10):
-        '''
-        agc:    Applies an AGC filter to the dataset
-        Inspired by     https://github.com/nvinard/seismicToolBox/blob/master/seismicToolBox.py
-        
-        Usage: 
-                self.apply_agc(tracenumber,inplace, window)
-            
-            
-        Parameters
-        -------------
-        tracenumber: integer
-            The Trace the AGC needs to be applied to
-            
-        inplace: bool
-            Manipulate the traces or return new object
-        
-        window: integer
-            AGC window in samples, NOT TIME
-            
-        Returns
-        -------------
-        traces: nd.array
-            Array with agc-gained trace values of the radargram
-     
-        
-        '''
-        def rms(x):
-            return np.sqrt(np.mean(x**2))
-        
-        
-        trace=self.traces[tracenumber,:]
-        
-        #put it in a dataframe so we can use its methods
-        #data = pd.DataFrame(data=self.traces)
-        
-        #rms for now
-        
-        # determine time sampling and num of samples
-        
-        N = self.NoOfSamples
-
-       # determine number of time gates to use
-        gates_num = int((N//window)+1)
-       
-       # initialise indecies for the coners of the gate
-        gate_1st_ind = 0
-        gate_2nd_ind = window
-        
-        # construct lists for begining and ends of tome gates
-        start_gate_inds = [(gate_1st_ind + i*gate_2nd_ind) for i in range(gates_num)]
-        end_gate_inds = [start_gate_inds[j] + gate_2nd_ind  for j in range(gates_num)]
-        end_gate_inds[-1] = N
-        
-        # initialise middle gate time and gain function arrays
-        t_rms_values   = np.zeros(gates_num+2)
-        amp_rms_values = np.zeros(gates_num+2)
-  
-        # loop over every gate
-        ivalue = 1
-        for istart, iend in zip(start_gate_inds, end_gate_inds):
-            t_rms_values[ivalue]    = 0.5*(istart + iend)
-            amp_rms_values[ivalue] = np.sqrt(np.mean(np.square(trace[istart:iend])))
-            ivalue += 1
-        
-        
-        # set side values for interpolation
-        t_rms_values[-1] = N
-        amp_rms_values[0] = amp_rms_values[1]
-        amp_rms_values[-1] = amp_rms_values[-2]
-        
-        # linear interpolation for the rms amp function for every sample N
-        rms_func = np.interp(range(N), t_rms_values, amp_rms_values )
-        
-        # calculate the gained trace
-        gained_trace = trace*(np.sqrt(np.mean(np.square(trace)))/rms_func)
-        if inplace==True: 
-            self.traces[tracenumber,:]=gained_trace
-        else: 
-            return gained_trace
-        
-        
-    def apply_agc_pandas(self,tracenumber:int,inplace=True,window=10):
-        '''
-        agc:    Applies an AGC filter to the dataset
-        Inspired by     https://github.com/nvinard/seismicToolBox/blob/master/seismicToolBox.py
-        
-        Usage: 
-                self.apply_agc(tracenumber,inplace, window)
-            
-            
-        Parameters
-        -------------
-        tracenumber: integer
-            The Trace the AGC needs to be applied to
-            
-        inplace: bool
-            Manipulate the traces or return new object
-        
-        window: integer
-            AGC window in samples, NOT TIME
-            
-        Returns
-        -------------
-        traces: nd.array
-            Array with agc-gained trace values of the radargram
-     
-        
-        '''
-        
-        ##p['x'].sub(p['y']).pow(2).mean(axis=1)
-        def rms(x):
-            #assuming pd series
-            return x.pow(2).mean()
-        
-        
-        trace=pd.Series(self.traces[tracenumber,:])
-        sqtrace=trace.pow(2)
-        
-        #put it in a dataframe so we can use its methods
-        #data = pd.DataFrame(data=self.traces)
-        
-        #rms for now
-        
-        # determine time sampling and num of samples
-        
-        N = self.NoOfSamples
-
-       # determine number of time gates to use
-        gates_num = int((N//window)+1)
-       
-       # initialise indecies for the coners of the gate
-        gate_1st_ind = 0
-        gate_2nd_ind = window
-        
-        # construct lists for begining and ends of tome gates
-        start_gate_inds = [(gate_1st_ind + i*gate_2nd_ind) for i in range(gates_num)]
-        end_gate_inds = [start_gate_inds[j] + gate_2nd_ind  for j in range(gates_num)]
-        end_gate_inds[-1] = N
-        
-        # initialise middle gate time and gain function arrays
-        t_rms_values   = np.zeros(gates_num+2)
-        amp_rms_values = np.zeros(gates_num+2)
-  
-        # loop over every gate
-        ivalue = 1
-        for istart, iend in zip(start_gate_inds, end_gate_inds):
-            t_rms_values[ivalue]    = 0.5*(istart + iend)
-            amp_rms_values[ivalue] = np.sqrt(sqtrace.iloc[istart:iend].mean())
-            ivalue += 1
-        
-        
-        # set side values for interpolation
-        t_rms_values[-1] = N
-        amp_rms_values[0] = amp_rms_values[1]
-        amp_rms_values[-1] = amp_rms_values[-2]
-        
-        
-        # linear interpolation for the rms amp function for every sample N
-        rms_func = np.interp(range(N), t_rms_values, amp_rms_values )
-        
-        # calculate the gained trace
-        gained_trace = trace*(np.sqrt(sqtrace.mean())/rms_func)
-        if inplace==True: 
-            self.traces[tracenumber,:]=gained_trace
-        else: 
-            return gained_trace
-        
-        
-    
-    def apply_agc2D(self,inplace=True,window=10):
-        '''
-        agc:    Applies an AGC filter to the dataset
-        Inspired by     https://github.com/nvinard/seismicToolBox/blob/master/seismicToolBox.py
-        
-        Usage: 
-                self.apply_agc(tracenumber,inplace, window)
-            
-            
-        Parameters
-        -------------
-       
-            
-        inplace: bool
-            Manipulate the traces or return new object
-        
-        window: integer
-            AGC window in samples, NOT TIME
-            
-        Returns
-        -------------
-        traces: nd.array
-            Array with agc-gained trace values of the radargram
-     
-        
-        '''
-        from scipy.interpolate import interp1d
-        def rms(x):
-            return np.sqrt(np.mean(x**2))
-        
-        
-        data=self.traces
-                
-        # determine time sampling and num of samples
-        
-        N_T,N = self.traces.shape
-        
-
-       # determine number of time gates to use
-        gates_num = int((N//window)+1)
-       
-       # initialise indecies for the coners of the gate
-        gate_1st_ind = 0
-        gate_2nd_ind = window
-        
-        # construct lists for begining and ends of time gates
-        start_gate_inds = [(gate_1st_ind + i*gate_2nd_ind) for i in range(gates_num)]
-        end_gate_inds = [start_gate_inds[j] + gate_2nd_ind  for j in range(gates_num)]
-        end_gate_inds[-1] = N
-        
-        # initialise middle gate time and gain function arrays
-        t_rms_values   = np.zeros(gates_num+2)
-        amp_rms_values = np.zeros((N_T,gates_num+2))
-  
-        # loop over every gate
-        ivalue = 1
-        for istart, iend in zip(start_gate_inds, end_gate_inds):
-            t_rms_values[ivalue]    = 0.5*(istart + iend)
-            amp_rms_values[:,ivalue] = np.sqrt(np.mean(np.square(data[:,istart:iend]),axis=1))
-            ivalue += 1
-        
-        
-        # set side values for interpolation
-        t_rms_values[-1] = N
-        amp_rms_values[:,0] = amp_rms_values[:,1]
-        amp_rms_values[:,-1] = amp_rms_values[:,-2]
-        
-        # linear interpolation for the rms amp function for every sample N
-        rms_interper= interp1d(t_rms_values, amp_rms_values,axis=1 )
-        rms_func = rms_interper(range(N))
-        
-        # calculate the gained trace
-        gained_traces = data*(np.sqrt(np.mean(np.square(data)))/rms_func)
-        if inplace==True: 
-            self.traces=gained_traces
-        else: 
-            return gained_traces
-    
-       
