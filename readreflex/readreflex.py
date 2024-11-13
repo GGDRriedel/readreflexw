@@ -8,7 +8,8 @@ https://www.sandmeier-geo.de/reflexw.html
 
 
 """
-from ....GPRPy.gprpy   import gprpy
+
+
 import pandas as pd
 import struct 
 import numpy as np
@@ -31,11 +32,12 @@ from scipy.signal import butter, lfilter, spectrogram, welch,windows,hilbert
 from tqdm import tqdm
 tqdm.pandas()
 
-    
+from .GPRpy.gprpy.toolbox import gprpyTools 
 ## radargram reader-class
        
    
 class radargram():
+
     
     #initialization to set up overtake of fileformats
     #for later bookkeeping, unused yet
@@ -48,7 +50,29 @@ class radargram():
     
 #        else:
 #            print('No file format was given, assuming .par')
-            
+         
+    # this part wraps import of various functions from gprpy 
+    
+    def align_traces(self):
+        return gprpyTools.alignTraces(self.traces.T).T
+    
+    def agcGain(self,window,inplace=False):
+        if inplace==True:
+            self.traces=np.array(gprpyTools.agcGain(self.traces,window))
+        else:
+            return np.array(gprpyTools.agcGain(self.traces,window))
+    def dewow(self,window,inplace=False):   
+        if inplace==True:
+            self.traces=np.array(gprpyTools.dewow(self.traces,window))
+        else:
+            return gprpyTools.dewow(self.traces,window)
+    def tpowGain(self,twtt,power,inplace=False):
+        if inplace==True:
+            self.traces=np.array(gprpyTools.tpowGain(self.traces,twtt,power))
+        else:
+            return np.array(gprpyTools.tpowGain(self.traces,twtt,power))
+        
+    
     # get some functions for copying itself correctly 
     def copy(self): 
         return copy.copy(self)
@@ -655,193 +679,197 @@ class radargram():
         
         #fig.colorbar(spec, orientation='horizontal',label='Log10[Spec]')
         return  cumsumpower_at_frequ_max_times_frequmax[nperseg+1:]
+    
+    def spectrosum(self,tracenumber,f_max,f_min,nperseg=64):
+        
+        """
+        Calculates the ratio of spectral power sums for a given trace 
+        between specified frequency limits.
+  
+       Parameters:
+        trace_number (int): Index of the trace to analyze.
+        f_max (float): Maximum frequency limit for power sum.
+        f_min (float): Minimum frequency limit for power sum.
+        nperseg (int, optional): Number of points per segment for FFT. Default is 64.
+      
+        Returns:
+            float: Ratio of power sum up to f_max divided by power sum up to f_min.
+      
+        Notes:
+            Ensure frequencies are provided in units of 1/sample time (e.g., Hz if sample time is 1s).
+            """
+        #sanity check: 
+        
+        if f_max< f_min: 
+            temp=f_max
+            f_max=f_min
+            f_min=temp
+            print('You swapped Min and Max, this was corrected')
+            
+        def find_nearest(array, value):
+            array = np.asarray(array)
+            idx = (np.abs(array - value)).argmin()
+            return array[idx],idx
+         
+        fs=1.0/self.header["timeincrement"]
+#        nperseg=256
+        
+        signal=self.traces[tracenumber,:]
+        
+        
+        time=self.header['time']
+        time_to_append=np.arange((int(nperseg*2))*self.header["timeincrement"]*-2,time[0],self.header["timeincrement"])
+        time=np.append(time_to_append,time)
+        time=time+np.abs(time[0])
+        signal=np.append(np.zeros(int(nperseg*2)),signal)
+        m=len(signal)
+        nfft=10*m
+        #print(m)
+        
+        f, t, Sxx = spectrogram(signal, fs,nperseg=nperseg,nfft=nfft,noverlap=nperseg-1,scaling='spectrum')
+        
+        # find where to sum to
+        freq_min_idx=find_nearest(f,f_min)
+        freq_max_idx=find_nearest(f,f_max)
+
+        powerfmax=np.cumsum(np.square(Sxx[0:freq_max_idx[1],:]),axis=0)[-1,:]
+        powerfmin=np.cumsum(np.square(Sxx[0:freq_min_idx[1],:]),axis=0)[-1,:]
+       # plt.pcolormesh(t, f, Sxx)
+        #plt.title('Fmin:{} Fmax:{}'.format(f[freq_min_idx[1]],f[freq_max_idx[1]]))
+       # fig,(ax_signal,ax_spectro)=plt.subplots(2,1,sharex=True)
+        #ax_signal.plot(time,signal)
+        #spec=ax_spectro.pcolormesh(t,f,np.log(Sxx))
+        #ax_spectro.scatter(t,maxima)
+        
+        #fig.colorbar(spec, orientation='horizontal',label='Log10[Spec]')
+        #return np.divide((powerfmaSx-powerfmin),powerfmax)
+        division=np.divide(powerfmax,powerfmin)
+        division=np.nan_to_num(division)
+        return division
+        
+    
+    def powersum(self, tracenumber,end=0):
+        ''' Gives Back the sum of the squared values of the trace'''
+        if end==0: end=self.header["samplenumber"]
+        signal=self.traces[tracenumber,0:end]
+        signalsq=np.square(signal)
+        sqsum=np.sum(signalsq)
+        return sqsum
+        
+        
+    def powerfuncs(self,tracenumber,refspec,powerwindow=64,nperseg=64):
+        
+        ''' gives back a normed value for the spectral content of the trace'''
+        
+        fs=1.0/self.header["timeincrement"]
+        #segment length in which to look at the spectrum 
+        #nperseg=128
+        
+     #   dfsignal=pandas.DataFrame(data=self.traces)
+     #   dfsignal.mean(axis=1)
+        signal=self.traces[tracenumber,:]
+        
+        
+        time=self.header['time']
+        
+        # append some zeros in the beginning to padd the fft
+        
+        time_to_append=np.arange((int(nperseg*2))*self.header["timeincrement"]*-2,time[0],self.header["timeincrement"])
+        time=np.append(time_to_append,time)
+        time=time+np.abs(time[0])
+        signal=np.append(np.zeros(int(nperseg*2)),signal)
+        m=len(signal)
+        nfft=m
+        #print(m)
+        
+        f, t, Sxx = spectrogram(signal, fs=fs,nperseg=nperseg,nfft=nfft,noverlap=nperseg-1,scaling='spectrum')
+        print("Summing up to f={} Ghz".format(f[powerwindow]/1E9))
+        # find the maximuns
+        maxima_ind=Sxx.argmax(axis=0)
+        dfSxx=pandas.DataFrame(data=Sxx)
+        power=np.cumsum(np.square(Sxx[0:powerwindow,:]),axis=0)[-1,:]
+        powerall=np.cumsum(np.square(Sxx),axis=0)[-1,:]
+        powerref=np.cumsum(np.square(refspec),axis=0)[-1,:]
+        
+        maxima=f[maxima_ind]
+       # if tracenumber%200==0 and tracenumber!=0:
+      #  +  #plt.figure()
+           #plt.pcolormesh(t, f, Sxx)
+        #    fig,(ax_signal,ax_spectro,ax_power)=plt.subplots(3,1,sharex=True)
+         #   ax_signal.plot(time,signal)
+           # spec=ax_spectro.pcolormesh(t,f,np.log(Sxx))
+           # ax_spectro.scatter(t,maxima)
+           # ax_power.scatter(t,np.divide(power,powerref))
+           # plt.title('Test Trace{}'.format(tracenumber))
+        
+        #fig.colorbar(spec, orientation='horizontal',label='Log10[Spec]')
+        
+        return np.nan_to_num(np.divide(power,powerref))
+    
+    def weighted_frequency(self,tracenumber,nperseg=64)    :
+        '''
+        Calculates the Weighted Instantaneous Signal
+        https://ieeexplore.ieee.org/document/721370
+        
+        returns array of seize of radargram data
+        '''
+        
+        fs=1.0/self.header["timeincrement"]
+        signal=self.traces[tracenumber,:]
+        time=self.header['time']
+        time_to_append=np.arange((int(nperseg*2))*self.header["timeincrement"]*-2,time[0],self.header["timeincrement"])
+        time=np.append(time_to_append,time)
+        time=time+np.abs(time[0])
+        signal=np.append(np.zeros(int(nperseg*2)),signal)
+        
+        
 # =============================================================================
-#     
-#     def spectrosum(self,tracenumber,f_max,f_min,nperseg=64):
-#         
-#         '''
-#          Gives Back the powersum up until fmax divided by the powersum up to fmin of each trace 
-#          Input:     Tracenumber -- Int              -- Trace to calculate at 
-#                     fmax        -- Int              -- Maximum Frequency
-#                     fmin        -- Int              -- Minimum Frequency
-#                     nperseg     -- Int Default 64   -- FFT Segments
-#                     
-#                     All Freqs at 1/sampletime Frequencies please.
-#                     Example: t_s= 1s -> f at n Hz please
-#         '''
-#         #sanity check: 
-#         
-#         if f_max< f_min: 
-#             temp=f_max
-#             f_max=f_min
-#             f_min=temp
-#             print('You swapped Min and Max, this was corrected')
-#             
-#         def find_nearest(array, value):
-#             array = np.asarray(array)
-#             idx = (np.abs(array - value)).argmin()
-#             return array[idx],idx
-#          
-#         fs=1.0/self.header["timeincrement"]
-# #        nperseg=256
-#         
-#         signal=self.traces[tracenumber,:]
-#         
-#         
-#         time=self.header['time']
-#         time_to_append=np.arange((int(nperseg*2))*self.header["timeincrement"]*-2,time[0],self.header["timeincrement"])
-#         time=np.append(time_to_append,time)
-#         time=time+np.abs(time[0])
-#         signal=np.append(np.zeros(int(nperseg*2)),signal)
-#         m=len(signal)
-#         nfft=10*m
-#         #print(m)
-#         
-#         f, t, Sxx = spectrogram(signal, fs,nperseg=nperseg,nfft=nfft,noverlap=nperseg-1,scaling='spectrum')
-#         
-#         # find where to sum to
-#         freq_min_idx=find_nearest(f,f_min)
-#         freq_max_idx=find_nearest(f,f_max)
-# 
-#         powerfmax=np.cumsum(np.square(Sxx[0:freq_max_idx[1],:]),axis=0)[-1,:]
-#         powerfmin=np.cumsum(np.square(Sxx[0:freq_min_idx[1],:]),axis=0)[-1,:]
-#        # plt.pcolormesh(t, f, Sxx)
-#         #plt.title('Fmin:{} Fmax:{}'.format(f[freq_min_idx[1]],f[freq_max_idx[1]]))
-#        # fig,(ax_signal,ax_spectro)=plt.subplots(2,1,sharex=True)
-#         #ax_signal.plot(time,signal)
-#         #spec=ax_spectro.pcolormesh(t,f,np.log(Sxx))
-#         #ax_spectro.scatter(t,maxima)
-#         
-#         #fig.colorbar(spec, orientation='horizontal',label='Log10[Spec]')
-#         #return np.divide((powerfmaSx-powerfmin),powerfmax)
-#         division=np.divide(powerfmax,powerfmin)
-#         division=np.nan_to_num(division)
-#         return division
-#         
-#     
-#     def powersum(self, tracenumber,end=0):
-#         ''' Gives Back the sum of the squared values of the trace'''
-#         if end==0: end=self.header["samplenumber"]
-#         signal=self.traces[tracenumber,0:end]
-#         signalsq=np.square(signal)
-#         sqsum=np.sum(signalsq)
-#         return sqsum
-#         
-#         
-#     def powerfuncs(self,tracenumber,refspec,powerwindow=64,nperseg=64):
-#         
-#         ''' gives back a normed value for the spectral content of the trace'''
-#         
-#         fs=1.0/self.header["timeincrement"]
-#         #segment length in which to look at the spectrum 
-#         #nperseg=128
-#         
-#      #   dfsignal=pandas.DataFrame(data=self.traces)
-#      #   dfsignal.mean(axis=1)
-#         signal=self.traces[tracenumber,:]
-#         
-#         
-#         time=self.header['time']
-#         
-#         # append some zeros in the beginning to padd the fft
-#         
-#         time_to_append=np.arange((int(nperseg*2))*self.header["timeincrement"]*-2,time[0],self.header["timeincrement"])
-#         time=np.append(time_to_append,time)
-#         time=time+np.abs(time[0])
-#         signal=np.append(np.zeros(int(nperseg*2)),signal)
-#         m=len(signal)
-#         nfft=m
-#         #print(m)
-#         
-#         f, t, Sxx = spectrogram(signal, fs=fs,nperseg=nperseg,nfft=nfft,noverlap=nperseg-1,scaling='spectrum')
-#         print("Summing up to f={} Ghz".format(f[powerwindow]/1E9))
-#         # find the maximuns
-#         maxima_ind=Sxx.argmax(axis=0)
-#         dfSxx=pandas.DataFrame(data=Sxx)
-#         power=np.cumsum(np.square(Sxx[0:powerwindow,:]),axis=0)[-1,:]
-#         powerall=np.cumsum(np.square(Sxx),axis=0)[-1,:]
-#         powerref=np.cumsum(np.square(refspec),axis=0)[-1,:]
-#         
-#         maxima=f[maxima_ind]
-#        # if tracenumber%200==0 and tracenumber!=0:
-#       #  +  #plt.figure()
-#            #plt.pcolormesh(t, f, Sxx)
-#         #    fig,(ax_signal,ax_spectro,ax_power)=plt.subplots(3,1,sharex=True)
-#          #   ax_signal.plot(time,signal)
-#            # spec=ax_spectro.pcolormesh(t,f,np.log(Sxx))
-#            # ax_spectro.scatter(t,maxima)
-#            # ax_power.scatter(t,np.divide(power,powerref))
-#            # plt.title('Test Trace{}'.format(tracenumber))
-#         
-#         #fig.colorbar(spec, orientation='horizontal',label='Log10[Spec]')
-#         
-#         return np.nan_to_num(np.divide(power,powerref))
-#     
-#     def weighted_frequency(self,tracenumber,nperseg=64)    :
-#         '''
-#         Calculates the Weighted Instantaneous Signal
-#         https://ieeexplore.ieee.org/document/721370
-#         
-#         returns array of seize of radargram data
-#         '''
-#         
-#         fs=1.0/self.header["timeincrement"]
-#         signal=self.traces[tracenumber,:]
-#         time=self.header['time']
-#         time_to_append=np.arange((int(nperseg*2))*self.header["timeincrement"]*-2,time[0],self.header["timeincrement"])
-#         time=np.append(time_to_append,time)
-#         time=time+np.abs(time[0])
-#         signal=np.append(np.zeros(int(nperseg*2)),signal)
-#         
-#         
-# # =============================================================================
-# #         #
-# #         analytic_signal = hilbert(signal)
-# #         amplitude_envelope = np.abs(analytic_signal)
-# #         instantaneous_phase = np.unwrap(np.angle(analytic_signal))
-# #         instantaneous_frequency = (np.diff(instantaneous_phase) /(2.0*np.pi) * fs)
-# #         instantaneous_frequency=np.append(instantaneous_frequency,instantaneous_frequency[-1])
-# #         asq=amplitude_envelope*amplitude_envelope
-# #         asq_f=amplitude_envelope*instantaneous_frequency
-# # =============================================================================
-#         
-#         m=len(signal)
-#        # return(np.cumsum(asq_f)/asq.sum())
-# 
-#         nfft=m
-#         f, t, mag = spectrogram(signal, fs=fs,nperseg=nperseg,nfft=nfft,noverlap=nperseg-1,scaling='spectrum',mode='magnitude',window=('gaussian',20))
-#         #sum over magsquared times instant frequency
-#         
-#         magsq=mag*mag # this was squared before but spectrogram already gives the squared
-#         magsqsum=magsq.sum(axis=0)
-#         magsum=(magsq.T*f).T.sum(axis=0)
-#         wif=np.divide(magsum,magsqsum)
-#         return np.nan_to_num(wif)
-# 
-#         #return instantaneous_frequency
-#     
-#     def ifgram_frequency(self,tracenumber,nperseg=64)    :
-#         '''
-#         Calculates the Ifgram Weighted Instantaneous Signal
-#         https://ieeexplore.ieee.org/document/721370
-#         
-#         returns array of seize of radargram data
-#         '''
-#         
-#         fs=1.0/self.header["timeincrement"]
-#         signal=self.traces[tracenumber,:]
-#         time=self.header['time']
-#         time_to_append=np.arange((int(nperseg*2))*self.header["timeincrement"]*-2,time[0],self.header["timeincrement"])
-#         time=np.append(time_to_append,time)
-#         time=time+np.abs(time[0])
-#         signal=np.append(np.zeros(int(nperseg*2)),signal)
-#         m=len(signal)
-#         nfft=m
-#         ifg,S,_=reassigned_spectrogram(signal,sr=fs,n_fft=2*nfft,win_length=nperseg-1)
-#         return ifg
-# 
-#         #return instantaneous_frequency        
+#         #
+#         analytic_signal = hilbert(signal)
+#         amplitude_envelope = np.abs(analytic_signal)
+#         instantaneous_phase = np.unwrap(np.angle(analytic_signal))
+#         instantaneous_frequency = (np.diff(instantaneous_phase) /(2.0*np.pi) * fs)
+#         instantaneous_frequency=np.append(instantaneous_frequency,instantaneous_frequency[-1])
+#         asq=amplitude_envelope*amplitude_envelope
+#         asq_f=amplitude_envelope*instantaneous_frequency
 # =============================================================================
+        
+        m=len(signal)
+       # return(np.cumsum(asq_f)/asq.sum())
+
+        nfft=m
+        f, t, mag = spectrogram(signal, fs=fs,nperseg=nperseg,nfft=nfft,noverlap=nperseg-1,scaling='spectrum',mode='magnitude',window=('gaussian',20))
+        #sum over magsquared times instant frequency
+        
+        magsq=mag*mag # this was squared before but spectrogram already gives the squared
+        magsqsum=magsq.sum(axis=0)
+        magsum=(magsq.T*f).T.sum(axis=0)
+        wif=np.divide(magsum,magsqsum)
+        return np.nan_to_num(wif)
+
+        #return instantaneous_frequency
+    
+    def ifgram_frequency(self,tracenumber,nperseg=64)    :
+        '''
+        Calculates the Ifgram Weighted Instantaneous Signal
+        https://ieeexplore.ieee.org/document/721370
+        
+        returns array of seize of radargram data
+        '''
+        
+        fs=1.0/self.header["timeincrement"]
+        signal=self.traces[tracenumber,:]
+        time=self.header['time']
+        time_to_append=np.arange((int(nperseg*2))*self.header["timeincrement"]*-2,time[0],self.header["timeincrement"])
+        time=np.append(time_to_append,time)
+        time=time+np.abs(time[0])
+        signal=np.append(np.zeros(int(nperseg*2)),signal)
+        m=len(signal)
+        nfft=m
+        ifg,S,_=reassigned_spectrogram(signal,sr=fs,n_fft=2*nfft,win_length=nperseg-1)
+        return ifg
+
+        #return instantaneous_frequency        
     def shortening(self,begin=0,end=200):
         '''shorts itself to traces begin - end
         begin --- start trace of shortened radargram
