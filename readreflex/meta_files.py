@@ -17,6 +17,7 @@ import geopandas as gpd
 from shapely.geometry import Point
 import re, glob
 
+from pathlib import Path
 def readpicks(filelocation,nrows=None):
 
     filename, file_extension = os.path.splitext(filelocation)
@@ -155,8 +156,8 @@ def parse_ifi_file(ifi_folder,dzx_file_path,lookup_file):
     else:
         print("No match found.")
         
-        
-    file_path=ifi_folder+r'\\'+str(lookup_data.iloc[index[0],1])
+    ifi_folder=Path(ifi_folder)        
+    file_path=ifi_folder.joinpath(str(lookup_data.iloc[index[0],1]))
     
     with open(file_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
