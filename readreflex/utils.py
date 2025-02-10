@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
 import numpy as np
+import numpy as np
+import pandas as pd
+from filterpy.kalman import KalmanFilter
+from scipy.interpolate import CubicSpline
 
 def nullstelle(x1,x2,y1,y2):
     worked=1
@@ -492,7 +496,78 @@ def normalize(data,maximum=None,minimum=None):
     return (data-data.min())/(data.max()-data.min())
     
     
-    
+
+
+
+def apply_kalman_filter(df, dt=1, process_noise=0.1, measurement_noise=5,xname="X",yname="Y"):
+    """
+    Applies a Kalman filter to a trajectory DataFrame with x and y coordinates.
+
+    Parameters:
+    df (pd.DataFrame): Input DataFrame with xname and yname columns.
+    dt (float): Time interval between measurements.
+    process_noise (float): Process noise scaling factor.
+    measurement_noise (float): Measurement noise scaling factor.
+
+    Returns:
+    pd.DataFrame: DataFrame with additional 'x_filtered' and 'y_filtered' columns.
+    """
+    # Initialize Kalman Filter for 2D tracking with acceleration
+    kf = KalmanFilter(dim_x=6, dim_z=2)  # dim_x=6 (x, y, vx, vy, ax, ay), dim_z=2 (x, y)
+
+    # State transition matrix (constant acceleration model)
+    kf.F = np.array([[1, 0, dt, 0, 0.5*dt**2, 0],
+                     [0, 1, 0, dt, 0, 0.5*dt**2],
+                     [0, 0, 1, 0, dt, 0],
+                     [0, 0, 0, 1, 0, dt],
+                     [0, 0, 0, 0, 1, 0],
+                     [0, 0, 0, 0, 0, 1]])
+
+    # Measurement function (we only observe x and y)
+    kf.H = np.array([[1, 0, 0, 0, 0, 0],
+                     [0, 1, 0, 0, 0, 0]])
+
+    # Initial state (position, velocity, acceleration)
+    kf.x = np.array([df[xname].iloc[0], df[yname].iloc[0], 0, 0, 0, 0])  # [x, y, vx, vy, ax, ay]
+
+    # Covariance matrix
+    kf.P = np.eye(6) * 500.  # High uncertainty in initial state
+
+    # Process noise covariance matrix (tune as necessary)
+    kf.Q = np.array([[process_noise, 0, process_noise, 0, process_noise*0.1, 0],
+                     [0, process_noise, 0, process_noise, 0, process_noise*0.1],
+                     [process_noise, 0, process_noise*0.5, 0, process_noise*0.1, 0],
+                     [0, process_noise, 0, process_noise*0.5, 0, process_noise*0.1],
+                     [process_noise*0.1, 0, process_noise*0.1, 0, process_noise*0.01, 0],
+                     [0, process_noise*0.1, 0, process_noise*0.1, 0, process_noise*0.01]])
+
+    # Measurement noise covariance matrix
+    kf.R = np.eye(2) * measurement_noise  # Assume standard deviation for x and y
+
+    # Apply Kalman filter
+    filtered_positions = []
+
+    for i in range(len(df)):
+        # Update step with observation
+        z = np.array([df.loc[i, xname], df.loc[i, yname]])  # Current measurement
+        kf.update(z)
+
+        # Prediction step for next state
+        kf.predict()
+
+        # Store the filtered position
+        filtered_positions.append(kf.x[:2])
+
+    # Add filtered positions back to DataFrame
+    filtered_positions = np.array(filtered_positions)
+    df['x_filtered'] = filtered_positions[:, 0]
+    df['y_filtered'] = filtered_positions[:, 1]
+
+    return df
+
+
+
+
 if __name__ == '__main__':
 
   pass

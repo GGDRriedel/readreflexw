@@ -552,10 +552,11 @@ class radargram():
         fig.canvas.mpl_connect('pick_event', onpick1)
         return fig,ax
         
-    def traceplot(self,tracenumber,*args,**kwargs): 
+    def traceplot(self,tracenumber,timeplot=True,*args,**kwargs): 
         '''
          Plots one or more traces into the same graph
         tracenumber - scalar or array of ints , needs to be a list or np array
+        timeplot - Whether the x axis is in time or samples
         '''
         
         if isinstance(tracenumber,(list,np.ndarray))==False:
@@ -564,8 +565,14 @@ class radargram():
             
         plt.figure()
         for traceno in tracenumber: 
-            plt.plot(self.header["time"],self.traces[traceno,:],linewidth=3,*args,**kwargs)
-        plt.xlabel("Time")
+            if timeplot==True:
+                plt.plot(self.header["time"],self.traces[traceno,:],linewidth=3,*args,**kwargs)
+            else:
+                plt.plot(self.traces[traceno,:],linewidth=3,*args,**kwargs)
+        if timeplot==True:        
+            plt.xlabel("Time")
+        else: 
+            plt.xlabel("Traces")
         plt.ylabel("Amplitude")
     
     def spectroplot(self,tracenumber,nperseg=32):
@@ -1051,10 +1058,14 @@ class radargram():
             for key, value in self.header.items():
                 writer.writerow([key, value])
     
-    def export_sgy(self,exportpath='default.sgy'):
+    def export_sgy(self,exportpath='default.sgy',maxtrace='default'):
         #reference: https://github.com/equinor/segyio/blob/master/python/examples/make-file.py
         spec = segyio.spec()
         filename = exportpath
+        if maxtrace=='default':
+            maxtrace=1000
+        else:
+            maxtrace=int(self.header['tracenumber'])
         # to create a file from nothing, we need to tell segyio about the structure of
         # the file, i.e. its inline numbers, crossline numbers, etc. You can also add
         # more structural information, but offsets etc. have sensible defautls. This is
@@ -1062,25 +1073,60 @@ class radargram():
         spec.sorting = 2
         spec.format = 5
         spec.samples = range(0,self.header['samplenumber'])
-        spec.ilines = range(0,self.header['tracenumber'])
+        spec.ilines = range(0,maxtrace)
         spec.xlines = [0]
         tr = 0
+        if self.header['timedimension'] == 'ns':
+            temp_dt=int(self.header['timeincrement']*1E6)
+        elif self.header['timedimension'] == 'ms':
+            temp_dt=1
+        print("Setting time to ", temp_dt)
+        print("Saving {} Traces".format(maxtrace))
         with segyio.create(filename, spec) as f:
-            for il in spec.ilines:
+            for il in range(maxtrace):
                 for xl in spec.xlines:
                     f.header[tr] = {
                         segyio.su.offset : 1,
                         segyio.su.iline  : il,
                         segyio.su.xline  : xl,
-                        segyio.su.dt     : int(self.header['timeincrement'])
+                        segyio.su.dt     : temp_dt
                         }
-                    f.trace[tr] = self.traces[il,:]
+                    f.trace[tr] = self.traces[tr,:]
                     tr += 1
+            print("Tr reached ",tr)
             f.bin.update(tsort=segyio.TraceSortingFormat.INLINE_SORTING)
-            #set sample time
-            if self.header['timedimension'] == 'ns':
-                f.bin.update(hdt=int(self.header['timeincrement']*1E6))
-            elif self.header['timedimension'] == 'ms':
-                f.bin.update(hdt=int(self.header['timeincrement']))
+        #set sample time
+            f.bin.update(hdt=temp_dt)
+        print("Wrote {}".format(exportpath))
+    
+    def export_sgy_legacy(self,exportpath='default.sgy'):
+        #reference: https://github.com/equinor/segyio/blob/master/python/examples/make-file.py
+         spec = segyio.spec()
+         filename = exportpath
+         # to create a file from nothing, we need to tell segyio about the structure of
+         # the file, i.e. its inline numbers, crossline numbers, etc. You can also add
+         # more structural information, but offsets etc. have sensible defautls. This is
+         # the absolute minimal specification for a N-by-M volume
+         spec.sorting = 2
+         spec.format = 5
+         spec.samples = range(0,self.header['samplenumber'])
+         spec.ilines = range(0,self.header['tracenumber'])
+         spec.xlines = [0]
+         tr = 0
+         with segyio.create(filename, spec) as f:
+             for il in spec.ilines:
+                 for xl in spec.xlines:
+                     f.header[tr] = {
+                         segyio.su.offset : 1,
+                         segyio.su.iline  : il,
+                         segyio.su.xline  : xl,
+                         segyio.su.dt     : int(self.header['timeincrement']*1000)
+                         }
+                     f.trace[tr] = self.traces[il,:]
+                     tr += 1
+             f.bin.update(tsort=segyio.TraceSortingFormat.INLINE_SORTING)
+             #set sample time
+             f.bin.update(hdt=int(self.header['timeincrement']*1000))
+
                                  
 
