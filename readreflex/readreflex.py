@@ -204,12 +204,12 @@ class radargram():
         #the REAL count is written at 484:488
         
         if tracenumber==64000: 
-            print('Tracenumber appears to be 64000 \n')
-            print("This could be due to numerical issues with the file formats. ")
-            print("Try other data position, possible correct value? Y/N")
-            answer=input()
-            if answer=='y':
-                tracenumber=int.from_bytes(data[484:488],byteorder='little',signed=True)
+           # print('Tracenumber appears to be 64000 \n')
+           # print("This could be due to numerical issues with the file formats. ")
+           # print("Try other data position, possible correct value? Y/N")
+           # answer=input()
+           # if answer=='y':
+               tracenumber=int.from_bytes(data[484:488],byteorder='little',signed=True)
             
     
         formatcode=int.from_bytes(data[452:456],byteorder='little') 
