@@ -20,12 +20,14 @@ from obspy import read as obread
 from scipy.signal import resample
 import copy
 import segyio
-
+import sys 
 from pathlib import Path
 
-
+import pyqtgraph as pg
+from PyQt5 import QtWidgets, QtCore
 #specific scipy packages for heritage to filters: 
 from scipy.signal import butter, lfilter, spectrogram, welch,windows,hilbert
+from scipy.ndimage import uniform_filter, median_filter
 #from librosa.core import reassigned_spectrogram
 #from librosa.core import reassigned_spectrogram as ifgram
 from tqdm import tqdm
@@ -33,7 +35,114 @@ tqdm.pandas()
 
     
 ## radargram reader-class
-       
+ 
+class GPRPlotterWidget(QtWidgets.QMainWindow):
+    """Standalone plotting widget that can be embedded or used independently"""
+    
+    def __init__(self, data, title="GPR Array Plotter", parent=None):
+        super().__init__(parent)
+        self.data = data
+        self.setWindowTitle(title)
+        self.setGeometry(100, 100, 1200, 800)
+        self.initUI()
+        
+    def initUI(self):
+        # Central widget
+        central_widget = QtWidgets.QWidget()
+        self.setCentralWidget(central_widget)
+        
+        # Layout
+        layout = QtWidgets.QVBoxLayout(central_widget)
+        
+        # Control panel
+        controls = QtWidgets.QHBoxLayout()
+        
+        # Color scale controls
+        self.vmin_input = QtWidgets.QDoubleSpinBox()
+        self.vmin_input.setRange(-2000, 2000)
+        self.vmin_input.setValue(self.data.min())
+        self.vmin_input.setSingleStep(0.1)
+        self.vmin_input.valueChanged.connect(self.update_colormap)
+        
+        self.vmax_input = QtWidgets.QDoubleSpinBox()
+        self.vmax_input.setRange(-2000, 2000)
+        self.vmax_input.setValue(self.data.max())
+        self.vmax_input.setSingleStep(0.1)
+        self.vmax_input.valueChanged.connect(self.update_colormap)
+        
+        # Colormap selection
+        self.colormap_combo = QtWidgets.QComboBox()
+        self.colormap_combo.addItems(['viridis', 'plasma', 'inferno', 'magma', 'cividis','greys'])
+        self.colormap_combo.currentTextChanged.connect(self.update_colormap)
+        
+        # Auto-scale button
+        auto_scale_btn = QtWidgets.QPushButton('Auto Scale')
+        auto_scale_btn.clicked.connect(self.auto_scale)
+        
+        controls.addWidget(QtWidgets.QLabel('Min:'))
+        controls.addWidget(self.vmin_input)
+        controls.addWidget(QtWidgets.QLabel('Max:'))
+        controls.addWidget(self.vmax_input)
+        controls.addWidget(QtWidgets.QLabel('Colormap:'))
+        controls.addWidget(self.colormap_combo)
+        controls.addWidget(auto_scale_btn)
+        controls.addStretch()
+        
+        layout.addLayout(controls)
+        
+        # Plot widget
+        self.plot_widget = pg.GraphicsLayoutWidget()
+        layout.addWidget(self.plot_widget)
+        
+        # Image item
+        self.plot = self.plot_widget.addPlot()
+        self.img = pg.ImageItem()
+        self.plot.addItem(self.img)
+        
+        # Colorbar
+        self.colorbar = pg.ColorBarItem(
+            values=(self.data.min(), self.data.max()),
+            colorMap='viridis'
+        )
+        self.plot_widget.addItem(self.colorbar)
+        
+        # Set up the image
+        self.update_image()
+        
+        # Enable mouse interaction
+        self.plot.setLabel('left', 'Depth/Time')
+        self.plot.setLabel('bottom', 'Trace Number')
+        
+    def update_image(self):
+        """Update the displayed image with current data and scaling"""
+        display_data = self.data.T
+        self.img.setImage(display_data, autoLevels=False)
+        self.img.setLevels([self.vmin_input.value(), self.vmax_input.value()])
+        
+    def update_colormap(self):
+        """Update colormap and color scaling"""
+        colormap_name = self.colormap_combo.currentText()
+        colormap = pg.colormap.get(colormap_name)
+        self.img.setColorMap(colormap)
+        self.img.setLevels([self.vmin_input.value(), self.vmax_input.value()])
+        self.colorbar.setColorMap(colormap)
+        self.colorbar.setLevels((self.vmin_input.value(), self.vmax_input.value()))
+        
+    def auto_scale(self):
+        """Auto-scale to data min/max"""
+        vmin, vmax = self.data.min(), self.data.max()
+        self.vmin_input.setValue(vmin)
+        self.vmax_input.setValue(vmax)
+        self.update_colormap()
+        
+    def update_data(self, new_data):
+        """Update the data being displayed"""
+        self.data = new_data
+        self.vmin_input.setValue(self.data.min())
+        self.vmax_input.setValue(self.data.max())
+        self.colorbar.setLevels((self.data.min(), self.data.max()))
+        self.update_image()
+      
    
 class radargram():
     
@@ -41,6 +150,9 @@ class radargram():
     #for later bookkeeping, unused yet
     def __init__(self,fileformat=None):
         print("Initialized Radargram object")
+        #some plotting setups: 
+        self.plotter = None
+        self._app = None
         #this is unfinished and not used
 #        if fileformat is not None and fileformat.lower() in {"**r", "**t"}:
 #            self.fileformat = "**R"
@@ -49,6 +161,23 @@ class radargram():
 #        else:
 #            print('No file format was given, assuming .par')
             
+   
+    def plot_interactive(self,  title="GPR Data"):
+        
+      """Create interactive plot of GPR data"""
+      data=np.flipud(self.traces.T)
+      plot_data = data if data is not None else self.data
+      if plot_data is None:
+          raise ValueError("No data to plot")
+          
+      # Ensure Qt application exists
+      app = QtWidgets.QApplication.instance()
+      if app is None:
+          app = QtWidgets.QApplication(sys.argv)
+      self.plotter = GPRPlotterWidget(plot_data, title=title)
+      self.plotter.show()
+      return app, self.plotter
+  
     # get some functions for copying itself correctly 
     def copy(self): 
         return copy.copy(self)
@@ -373,7 +502,26 @@ class radargram():
         else: 
             print("No coordinates provided")
             
+    def set_time(self,sampling_time, sampling_dimension): 
+        '''
+        
 
+        Parameters
+        ----------
+        sampling_time : float
+            desired sampling interval
+        sampling_dimension: str
+            sampling dimenstion of sampling interal e.g. s ms ns
+        Returns
+        -------
+        None.
+
+        '''
+        #recalculate header time
+        self.header['time']=np.linspace(0, self.header["samplenumber"]*sampling_time,self.header["samplenumber"])
+        self.header["timedimension"]=sampling_dimension
+        self.header["timeincrement"]=sampling_time
+        
 
     def load_seismics(self,filepath): 
         ''' Reads all kinds of seismic file formats inherited from \\
@@ -860,7 +1008,7 @@ class radargram():
             print('End trace larger than radargram trace-no., changing nothing')
             return
         else: 
-            self.header["tracenumber"]=end
+            self.header["tracenumber"]=end-begin
             self.traces=self.traces[begin:end,:]
     
     def time_resampling(self,target):
@@ -1047,6 +1195,138 @@ class radargram():
         else:
             
             return agc_data
+            
+    def apply_linear_gain(self, breakpoint_sample=51, slope=0.0672, intercept=1.0, inplace=True):
+        '''
+        Applies a piecewise linear gain to the GPR traces.
+    
+        For samples < breakpoint_sample:
+            gain = intercept
+        For samples >= breakpoint_sample:
+            gain = intercept + slope * (sample_index - breakpoint_sample)
+    
+        Parameters:
+            breakpoint_sample (int): The sample index at which the gain begins to increase.
+            slope (float): Slope of the linear gain after the breakpoint.
+            intercept (float): Gain value before the breakpoint.
+            inplace (bool): If True, modifies self.traces in-place. If False, returns a gained copy.
+    
+        Returns:
+            If inplace is False, returns a new NumPy array with gained traces.
+        '''
+        if not hasattr(self, 'traces'):
+            raise AttributeError("Object must have a 'traces' attribute (2D NumPy array).")
+        
+        n_samples = self.traces.shape[1]
+    
+        # Build gain vector
+        gain = np.full(n_samples, intercept)
+        gain[breakpoint_sample:] = intercept + slope * (np.arange(breakpoint_sample, n_samples) - breakpoint_sample)
+    
+        # Apply gain to each trace
+        if inplace:
+            self.traces *= gain
+        else:
+            return self.traces * gain
+   
+    def apply_2d_average_filter(self, window_size=(3, 3), inplace=True):
+        '''
+        Applies a 2D moving average filter to the GPR data using a square window.
+        
+        This smooths both in the time (samples) and trace directions.
+    
+        Parameters:
+            window_size (tuple): Size of the averaging window (default is (3, 3)).
+                                 Format is (trace_window, time_sample_window).
+            inplace (bool): If True, modifies self.traces in-place. If False, returns a filtered copy.
+    
+        Returns:
+            If inplace is False, returns the filtered array.
+        '''
+        if not hasattr(self, 'traces'):
+            raise AttributeError("Object must have a 'traces' attribute (2D NumPy array).")
+    
+        # Apply uniform filter (mode='nearest' handles edges without zero-padding)
+        filtered = uniform_filter(self.traces, size=window_size, mode='nearest')
+    
+        if inplace:
+            self.traces = filtered
+        else:
+            return filtered
+
+
+    
+    
+
+    
+    def apply_horizontal_filter(
+        self, sample_start=136, sample_end=512,
+        window_radius=100, use_median=True,
+        taper_length=40, inplace=True
+    ):
+        '''
+        Applies a horizontal filter that subtracts the median (or mean) over a running window
+        of 201 traces (±100), with a soft taper at the beginning.
+        
+        Parameters:
+            sample_start (int): First sample index to apply filtering (e.g., corresponds to 10 ns).
+            sample_end (int): Last sample index to apply filtering (e.g., 54.1 ns).
+            window_radius (int): Radius of the trace window (default 100 → total width = 201).
+            use_median (bool): If True, use median filter. If False, use mean filter.
+            taper_length (int): Number of samples over which to blend in the filter at the start.
+            inplace (bool): If True, modifies self.traces in-place. If False, returns filtered copy.
+        
+        Returns:
+            If inplace is False, returns filtered data. Otherwise, modifies self.traces in-place.
+        '''
+        if not hasattr(self, 'traces'):
+            raise AttributeError("Object must have a 'traces' attribute (2D NumPy array).")
+    
+        data = self.traces
+        n_traces, n_samples = data.shape
+    
+        sample_start = max(0, sample_start)
+        sample_end = min(n_samples, sample_end)
+        taper_length = min(taper_length, sample_start)  # prevent out-of-bound
+    
+        output = data.copy() if not inplace else data
+    
+        # Precompute taper weights using a Hanning window
+        if taper_length > 0:
+            taper_weights = np.hanning(taper_length * 2)[:taper_length]  # ramp from 0 to 1
+        else:
+            taper_weights = []
+    
+        for s in range(sample_start - taper_length, sample_end):
+            if s < 0 or s >= n_samples:
+                continue
+    
+            trace_column = data[:, s]
+    
+            if use_median:
+                filtered = median_filter(trace_column, size=2 * window_radius + 1, mode='nearest')
+            else:
+                window_size = 2 * window_radius + 1
+                cumsum = np.cumsum(np.insert(trace_column, 0, 0))
+                mean_filtered = (cumsum[window_size:] - cumsum[:-window_size]) / window_size
+                pad_left = window_radius
+                pad_right = len(trace_column) - len(mean_filtered) - pad_left
+                filtered = np.pad(mean_filtered, (pad_left, pad_right), mode='edge')
+    
+            # Blend using taper if in taper region
+            if s < sample_start:
+                taper_idx = s-(sample_start-taper_length)
+                weight = taper_weights[taper_idx]
+                #blend into the data
+                output[:,s]=output[:,s]-(weight *filtered)
+                #output[:, s] = (1 - weight) * output[:, s] + weight * filtered
+            else:
+                output[:, s] = output[:,s]-filtered
+    
+        if not inplace:
+            return output
+
+        
 
     
     def export_csv(self,exportpath='export.csv'): 
@@ -1099,7 +1379,7 @@ class radargram():
             f.bin.update(hdt=temp_dt)
         print("Wrote {}".format(exportpath))
     
-    def export_sgy_legacy(self,exportpath='default.sgy'):
+    def export_sgy(self,exportpath='default.sgy',keyX="X",keyY="Y"):
         #reference: https://github.com/equinor/segyio/blob/master/python/examples/make-file.py
          spec = segyio.spec()
          filename = exportpath
@@ -1116,7 +1396,17 @@ class radargram():
          with segyio.create(filename, spec) as f:
              for il in spec.ilines:
                  for xl in spec.xlines:
-                     f.header[tr] = {
+                     if hasattr(self,"metadataframe"): 
+                         f.header[tr] = {
+                         segyio.su.offset : 1,
+                         segyio.su.iline  : il,
+                         segyio.su.xline  : xl,
+                         segyio.su.dt     : int(self.header['timeincrement']*1000),
+                         segyio.su.cdpx: int(self.metadataframe[keyX][tr]*100),
+                         segyio.su.cdpy: int(self.metadataframe[keyY][tr]*100),
+                         }
+                     else:
+                         f.header[tr] = {
                          segyio.su.offset : 1,
                          segyio.su.iline  : il,
                          segyio.su.xline  : xl,
@@ -1128,5 +1418,5 @@ class radargram():
              #set sample time
              f.bin.update(hdt=int(self.header['timeincrement']*1000))
 
-                                 
+
 

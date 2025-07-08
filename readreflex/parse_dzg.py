@@ -41,7 +41,7 @@ def parse_gps_data(file_path):
                     "longitude": convert_to_decimal(fields[4], fields[5]),
                     "fix_quality": int(fields[6]),
                     "num_satellites": int(fields[7]),
-                    "hdop": float(fields[8]),
+                    "hdop": float(fields[8]) if fields[8] else None,
                     "altitude": float(fields[9]),
                     "altitude_units": fields[10],
                     "geoid_separation": float(fields[11]),

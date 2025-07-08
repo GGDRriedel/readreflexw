@@ -157,7 +157,11 @@ def parse_ifi_file(ifi_folder,dzx_file_path,lookup_file):
         print("No match found.")
         
     ifi_folder=Path(ifi_folder)        
-    file_path=ifi_folder.joinpath(str(lookup_data.iloc[index[0],1]))
+    try:
+        file_path=ifi_folder.joinpath(str(lookup_data.iloc[index[0],1]))
+    except:
+        print("Could not read the Ifi file, skipping. ")
+        return None
     
     with open(file_path, 'r', encoding='utf-8') as f:
         lines = f.readlines()
