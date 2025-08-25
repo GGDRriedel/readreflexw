@@ -33,7 +33,7 @@ from scipy.ndimage import uniform_filter, median_filter
 from tqdm import tqdm
 tqdm.pandas()
 
-from import_mala import read_mala_data
+from .import_mala import read_mala_data
 
     
 ## radargram reader-class
@@ -612,9 +612,23 @@ class radargram():
         except: 
             print("Could not read any metadata frame")  
 
-     
-    
-            
+    def load_mala(self, datafile, radfile, posfile,channel):
+        ''' Loads MALÅ files'''
+        mdata, mhdr, mexpanded_df= read_mala_data(datafile,radfile, posfile)
+        self.traces=mdata[:,channel,:]
+        self.header={"samplenumber": mhdr["SAMPLES"],
+                "zerosample": 0,
+                "tracenumber": mdata[:,channel,:].shape[0],
+                "formatcode": "mala",
+                "traceincrement": mhdr["DISTANCE INTERVAL"],
+                "timeincrement":mhdr["TIMEWINDOW"]/mhdr["SAMPLES"],
+                "timebegin": 0,
+                "timedimension": "ns",
+                "time": np.linspace(0,mhdr["TIMEWINDOW"],mhdr["SAMPLES"]),
+                "xoffset": 0,
+                "description": "Derived from Mala radar data"}
+        
+
     def get_output_data(self,filename, rxnumber, rxcomponent,xstep):
         '''   
         reads the output data of GPRmax-Simulations
