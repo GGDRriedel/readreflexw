@@ -33,6 +33,8 @@ from scipy.ndimage import uniform_filter, median_filter
 from tqdm import tqdm
 tqdm.pandas()
 
+from import_mala import read_mala_data
+
     
 ## radargram reader-class
  
@@ -609,7 +611,9 @@ class radargram():
             self.metadataframe=pd.read_hdf(h5file)
         except: 
             print("Could not read any metadata frame")  
-            
+
+     
+    
             
     def get_output_data(self,filename, rxnumber, rxcomponent,xstep):
         '''   
