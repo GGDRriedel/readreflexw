@@ -23,6 +23,10 @@ import segyio
 import sys 
 from pathlib import Path
 
+import geopandas as gpd
+from shapely.geometry import Point
+
+
 import pyqtgraph as pg
 from PyQt5 import QtWidgets, QtCore
 #specific scipy packages for heritage to filters: 
@@ -493,7 +497,7 @@ class radargram():
     def set_metadata(self,metadataframe:pd.DataFrame,coordinatenames=["X","Y","Z"]): 
         ''' this sets a metadata frame attached to the radargram
         metadataframe:          A pandas Dataframe
-        coordinatenames:        ["X,Y,Z"] Two strings for the coordinates'''
+        coordinatenames:        ["X","Y","Z"]  strings for the coordinates'''
         self.metadataframe=metadataframe
         if(coordinatenames[0] in metadataframe and coordinatenames[1] in metadataframe): 
             print("Found Coordinates in Metaframe")
@@ -612,10 +616,11 @@ class radargram():
         except: 
             print("Could not read any metadata frame")  
 
-    def load_mala(self, datafile, radfile, posfile,channel):
+    def load_mala(self, datafile, radfile, posfile,channel,CRS=25833):
         ''' Loads MALÅ files'''
+        from scipy.interpolate import CubicSpline
         mdata, mhdr, mexpanded_df= read_mala_data(datafile,radfile, posfile)
-        self.traces=mdata[:,channel,:]
+        self.traces=mdata[:,channel,:].astype(float)
         self.header={"samplenumber": mhdr["SAMPLES"],
                 "zerosample": 0,
                 "tracenumber": mdata[:,channel,:].shape[0],
@@ -627,7 +632,28 @@ class radargram():
                 "time": np.linspace(0,mhdr["TIMEWINDOW"],mhdr["SAMPLES"]),
                 "xoffset": 0,
                 "description": "Derived from Mala radar data"}
+        # set the metadataframe to the channels coordinates
+        #interpolate the coordinates before doing so
         
+        channelmetadata=mexpanded_df[mexpanded_df["CHANNEL"]==channel]
+        gps_traces=channelmetadata["TRACE"]
+        traces=np.arange(0,self.header["tracenumber"])
+
+        spline_x = CubicSpline(gps_traces, channelmetadata["X"], extrapolate=True)
+        spline_y = CubicSpline(gps_traces, channelmetadata["Y"], extrapolate=True)
+        spline_z = CubicSpline(gps_traces, channelmetadata["Z"], extrapolate=True)
+
+        interpolated_x = spline_x(traces)
+        interpolated_y = spline_y(traces)
+        interpolated_z = spline_z(traces)
+        #interpolated_points = [Point(x, y) for x, y in zip(interpolated_x, interpolated_y)]
+
+        df_utm_interpolated = pd.DataFrame([interpolated_x, interpolated_y,interpolated_z]).T
+
+        df_utm_interpolated.columns = ["X", "Y", "Z"]
+        df_utm_interpolated["trace_no"] = traces
+        df_utm_interpolated["Z"] = interpolated_z
+        self.set_metadata(df_utm_interpolated,coordinatenames=["X","Y","Z"])
 
     def get_output_data(self,filename, rxnumber, rxcomponent,xstep):
         '''   
