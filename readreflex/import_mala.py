@@ -99,12 +99,17 @@ def expand_positions_for_channels(pos_df: pd.DataFrame, n_channels: int):
 
 
 
+
 def expand_positions_with_offsets(pos_df, rad_header):
     """
-    Expand pos_df positions for each channel, applying offsets from RAD file.
-    
-    pos_df: DataFrame with TRACE, NORTHING, EASTING, ELEVATION
-    rad_header: dict from your parsed .rad file
+    Expand pos_df positions for each channel, applying antenna geometry offsets
+    rotated into survey coordinates.
+
+    pos_df: DataFrame with TRACE, X (EASTING), Y (NORTHING), Z (ELEVATION)
+    rad_header: dict from parsed .rad file containing:
+        - "CHANNELS"
+        - "CH_X_OFFSETS" (antenna local X offsets, along-track)
+        - "CH_Y_OFFSETS" (antenna local Y offsets, cross-track)
     """
     n_channels = int(rad_header.get("CHANNELS", 1))
     x_offsets = np.array(rad_header.get("CH_X_OFFSETS", [0.0]))
@@ -113,18 +118,37 @@ def expand_positions_with_offsets(pos_df, rad_header):
     if len(x_offsets) != n_channels or len(y_offsets) != n_channels:
         raise ValueError("Mismatch between CHANNELS and CH_X/Y_OFFSETS length")
 
-    # Repeat each trace for each channel
+    # Compute heading (azimuth) for each trace
+    # heading = atan2(dy, dx), with forward fill for edges
+    dx = pos_df["X"].diff().fillna(0)
+    dy = pos_df["Y"].diff().fillna(0)
+    headings = np.arctan2(dy, dx).fillna(method="bfill").fillna(method="ffill")
+
     expanded = []
-    for _, row in pos_df.iterrows():
+    for i, row in pos_df.iterrows():
+        heading = headings.iloc[i]
+
+        # Rotation matrix (local → global)
+        cos_h, sin_h = np.cos(heading), np.sin(heading)
+        R = np.array([[cos_h, -sin_h],
+                      [sin_h,  cos_h]])
+
         for ch in range(n_channels):
+            # local offset vector
+            local_offset = np.array([x_offsets[ch], y_offsets[ch]])
+            # rotate to global coordinates
+            dx_global, dy_global = R @ local_offset
+
             expanded.append({
                 "TRACE": int(row["TRACE"]),
                 "CHANNEL": ch,
-                "Y": row["Y"] + y_offsets[ch],  # apply Y offset
-                "X": row["X"] + x_offsets[ch],   # apply X offset
+                "X": row["X"] + dx_global,
+                "Y": row["Y"] + dy_global,
                 "Z": row["Z"]
             })
+
     return pd.DataFrame(expanded)
+
 
 
 def parse_mala_rad(rad_path: str | Path) -> dict:
@@ -322,6 +346,6 @@ def read_mala_data(datafile,radfile, posfile):
     """
     data, hdr = read_mala_rd(datafile)  # expects yourfile.rad next to it
     pos_df = read_positions(posfile)   # or .pos, .gps, etc.
-    expanded_df = expand_positions_with_offsets(pos_df, hdr)
+    #expanded_df = expand_positions_with_offsets(pos_df, hdr)
     print(hdr["_DERIVED_"])  # useful derived counts
-    return data, hdr, expanded_df
+    return data, hdr, pos_df

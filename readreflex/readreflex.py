@@ -619,7 +619,7 @@ class radargram():
     def load_mala(self, datafile, radfile, posfile,channel,CRS=25833):
         ''' Loads MALÅ files'''
         from scipy.interpolate import CubicSpline
-        mdata, mhdr, mexpanded_df= read_mala_data(datafile,radfile, posfile)
+        mdata, mhdr, mpos_df= read_mala_data(datafile,radfile, posfile)
         self.traces=mdata[:,channel,:].astype(float)
         self.header={"samplenumber": mhdr["SAMPLES"],
                 "zerosample": 0,
@@ -631,11 +631,13 @@ class radargram():
                 "timedimension": "ns",
                 "time": np.linspace(0,mhdr["TIMEWINDOW"],mhdr["SAMPLES"]),
                 "xoffset": 0,
-                "description": "Derived from Mala radar data"}
+                "description": "Derived from Mala radar data",
+                "antenna_array_x_offsets": mhdr["CH_X_OFFSETS"],
+                "antenna_array_y_offsets": mhdr["CH_Y_OFFSETS"]}
         # set the metadataframe to the channels coordinates
         #interpolate the coordinates before doing so
-        
-        channelmetadata=mexpanded_df[mexpanded_df["CHANNEL"]==channel]
+        #TODO: clean this naming up
+        channelmetadata=mpos_df
         gps_traces=channelmetadata["TRACE"]
         traces=np.arange(0,self.header["tracenumber"])
 
@@ -648,7 +650,7 @@ class radargram():
         interpolated_z = spline_z(traces)
         #interpolated_points = [Point(x, y) for x, y in zip(interpolated_x, interpolated_y)]
 
-        df_utm_interpolated = pd.DataFrame([interpolated_x, interpolated_y,interpolated_z]).T
+        df_utm_interpolated = pd.DataFrame([interpolated_x, interpolated_y, interpolated_z]).T
 
         df_utm_interpolated.columns = ["X", "Y", "Z"]
         df_utm_interpolated["trace_no"] = traces
@@ -1240,7 +1242,7 @@ class radargram():
             
             return agc_data
             
-    def apply_linear_gain(self, breakpoint_sample=51, slope=0.0672, intercept=1.0, inplace=True):
+    def apply_linear_gain(self, breakpoint_sample=51, slope=0.0672, intercept=1.0, inplace=True,show_plot=True):
         '''
         Applies a piecewise linear gain to the GPR traces.
     
@@ -1266,7 +1268,20 @@ class radargram():
         # Build gain vector
         gain = np.full(n_samples, intercept)
         gain[breakpoint_sample:] = intercept + slope * (np.arange(breakpoint_sample, n_samples) - breakpoint_sample)
-    
+          
+          # --- Visualization ---
+        if show_plot:
+            import matplotlib.pyplot as plt
+            plt.figure()
+            plt.plot(gain, label="Linear Gain")
+            plt.axvline(breakpoint_sample, color='r', linestyle='--', label=f'Breakpoint ({breakpoint_sample})')
+            plt.xlabel("Sample Index")
+            plt.ylabel("Gain Value")
+            plt.title("Applied Linear Gain Function")
+            plt.legend()
+            plt.tight_layout()
+            plt.show(block=False)
+        # --- End Visualization ---
         # Apply gain to each trace
         if inplace:
             self.traces *= gain
