@@ -461,7 +461,12 @@ class radargram():
                     tracedata[j]=struct.unpack('h', byteobject[i:i+bytelength])[0]
                     #tracedata[j]=struct.unpack('h', byteobject[i:i+bytelength])
                     #print(tracedata[j])
-            return tracedata
+            timecollect=timecollect=struct.unpack('d', byteobject[114:122])[0]
+            # these most likely only give out garbage
+            t_y,t_x=struct.unpack('2d', byteobject[54:70])
+            t_z=struct.unpack('d', byteobject[38:46])[0]
+            return tracedata,timecollect,t_x,t_y,t_z
+   
    
     def __convert_to_array(self):
         if self.header["formatcode"]==3:
