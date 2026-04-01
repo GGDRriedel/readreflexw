@@ -28,11 +28,14 @@ from PyQt5 import QtWidgets, QtCore
 #specific scipy packages for heritage to filters: 
 from scipy.signal import butter, lfilter, spectrogram, welch,windows,hilbert
 from scipy.ndimage import uniform_filter, median_filter
-#from librosa.core import reassigned_spectrogram
-#from librosa.core import reassigned_spectrogram as ifgram
+# TODO: librosa-based reassigned spectrogram (ifgram_frequency) is not yet
+#       available without the librosa dependency. Re-enable once librosa is added
+#       to requirements and the ifgram_frequency method below is restored.
+#       import: from librosa.core import reassigned_spectrogram as ifgram
 from tqdm import tqdm
 tqdm.pandas()
 
+from .noise_analyzer import GPRNoiseAnalyzer
     
 ## radargram reader-class
  
@@ -149,10 +152,13 @@ class radargram():
     #initialization to set up overtake of fileformats
     #for later bookkeeping, unused yet
     def __init__(self,fileformat=None):
+        #super().__init__()
         print("Initialized Radargram object")
         #some plotting setups: 
         self.plotter = None
         self._app = None
+        self.noise_analyzer=None # place holder for later init
+        self.traces=None
         #this is unfinished and not used
 #        if fileformat is not None and fileformat.lower() in {"**r", "**t"}:
 #            self.fileformat = "**R"
@@ -161,7 +167,13 @@ class radargram():
 #        else:
 #            print('No file format was given, assuming .par')
             
-   
+    def initialize_noise_analyzer(self,traces=None,sampling_rate=None, time_window=None):
+        if traces is None:
+            traces=self.traces.T
+        if sampling_rate is None: 
+            sampling_rate=1/self.header["timeincrement"]*1E9
+        self.noise_analyzer= GPRNoiseAnalyzer(traces,sampling_rate,time_window)
+        
     def plot_interactive(self,  title="GPR Data"):
         
       """Create interactive plot of GPR data"""
@@ -810,193 +822,32 @@ class radargram():
         
         #fig.colorbar(spec, orientation='horizontal',label='Log10[Spec]')
         return  cumsumpower_at_frequ_max_times_frequmax[nperseg+1:]
-# =============================================================================
-#     
-#     def spectrosum(self,tracenumber,f_max,f_min,nperseg=64):
-#         
-#         '''
-#          Gives Back the powersum up until fmax divided by the powersum up to fmin of each trace 
-#          Input:     Tracenumber -- Int              -- Trace to calculate at 
-#                     fmax        -- Int              -- Maximum Frequency
-#                     fmin        -- Int              -- Minimum Frequency
-#                     nperseg     -- Int Default 64   -- FFT Segments
-#                     
-#                     All Freqs at 1/sampletime Frequencies please.
-#                     Example: t_s= 1s -> f at n Hz please
-#         '''
-#         #sanity check: 
-#         
-#         if f_max< f_min: 
-#             temp=f_max
-#             f_max=f_min
-#             f_min=temp
-#             print('You swapped Min and Max, this was corrected')
-#             
-#         def find_nearest(array, value):
-#             array = np.asarray(array)
-#             idx = (np.abs(array - value)).argmin()
-#             return array[idx],idx
-#          
-#         fs=1.0/self.header["timeincrement"]
-# #        nperseg=256
-#         
-#         signal=self.traces[tracenumber,:]
-#         
-#         
-#         time=self.header['time']
-#         time_to_append=np.arange((int(nperseg*2))*self.header["timeincrement"]*-2,time[0],self.header["timeincrement"])
-#         time=np.append(time_to_append,time)
-#         time=time+np.abs(time[0])
-#         signal=np.append(np.zeros(int(nperseg*2)),signal)
-#         m=len(signal)
-#         nfft=10*m
-#         #print(m)
-#         
-#         f, t, Sxx = spectrogram(signal, fs,nperseg=nperseg,nfft=nfft,noverlap=nperseg-1,scaling='spectrum')
-#         
-#         # find where to sum to
-#         freq_min_idx=find_nearest(f,f_min)
-#         freq_max_idx=find_nearest(f,f_max)
-# 
-#         powerfmax=np.cumsum(np.square(Sxx[0:freq_max_idx[1],:]),axis=0)[-1,:]
-#         powerfmin=np.cumsum(np.square(Sxx[0:freq_min_idx[1],:]),axis=0)[-1,:]
-#        # plt.pcolormesh(t, f, Sxx)
-#         #plt.title('Fmin:{} Fmax:{}'.format(f[freq_min_idx[1]],f[freq_max_idx[1]]))
-#        # fig,(ax_signal,ax_spectro)=plt.subplots(2,1,sharex=True)
-#         #ax_signal.plot(time,signal)
-#         #spec=ax_spectro.pcolormesh(t,f,np.log(Sxx))
-#         #ax_spectro.scatter(t,maxima)
-#         
-#         #fig.colorbar(spec, orientation='horizontal',label='Log10[Spec]')
-#         #return np.divide((powerfmaSx-powerfmin),powerfmax)
-#         division=np.divide(powerfmax,powerfmin)
-#         division=np.nan_to_num(division)
-#         return division
-#         
-#     
-#     def powersum(self, tracenumber,end=0):
-#         ''' Gives Back the sum of the squared values of the trace'''
-#         if end==0: end=self.header["samplenumber"]
-#         signal=self.traces[tracenumber,0:end]
-#         signalsq=np.square(signal)
-#         sqsum=np.sum(signalsq)
-#         return sqsum
-#         
-#         
-#     def powerfuncs(self,tracenumber,refspec,powerwindow=64,nperseg=64):
-#         
-#         ''' gives back a normed value for the spectral content of the trace'''
-#         
-#         fs=1.0/self.header["timeincrement"]
-#         #segment length in which to look at the spectrum 
-#         #nperseg=128
-#         
-#      #   dfsignal=pandas.DataFrame(data=self.traces)
-#      #   dfsignal.mean(axis=1)
-#         signal=self.traces[tracenumber,:]
-#         
-#         
-#         time=self.header['time']
-#         
-#         # append some zeros in the beginning to padd the fft
-#         
-#         time_to_append=np.arange((int(nperseg*2))*self.header["timeincrement"]*-2,time[0],self.header["timeincrement"])
-#         time=np.append(time_to_append,time)
-#         time=time+np.abs(time[0])
-#         signal=np.append(np.zeros(int(nperseg*2)),signal)
-#         m=len(signal)
-#         nfft=m
-#         #print(m)
-#         
-#         f, t, Sxx = spectrogram(signal, fs=fs,nperseg=nperseg,nfft=nfft,noverlap=nperseg-1,scaling='spectrum')
-#         print("Summing up to f={} Ghz".format(f[powerwindow]/1E9))
-#         # find the maximuns
-#         maxima_ind=Sxx.argmax(axis=0)
-#         dfSxx=pandas.DataFrame(data=Sxx)
-#         power=np.cumsum(np.square(Sxx[0:powerwindow,:]),axis=0)[-1,:]
-#         powerall=np.cumsum(np.square(Sxx),axis=0)[-1,:]
-#         powerref=np.cumsum(np.square(refspec),axis=0)[-1,:]
-#         
-#         maxima=f[maxima_ind]
-#        # if tracenumber%200==0 and tracenumber!=0:
-#       #  +  #plt.figure()
-#            #plt.pcolormesh(t, f, Sxx)
-#         #    fig,(ax_signal,ax_spectro,ax_power)=plt.subplots(3,1,sharex=True)
-#          #   ax_signal.plot(time,signal)
-#            # spec=ax_spectro.pcolormesh(t,f,np.log(Sxx))
-#            # ax_spectro.scatter(t,maxima)
-#            # ax_power.scatter(t,np.divide(power,powerref))
-#            # plt.title('Test Trace{}'.format(tracenumber))
-#         
-#         #fig.colorbar(spec, orientation='horizontal',label='Log10[Spec]')
-#         
-#         return np.nan_to_num(np.divide(power,powerref))
-#     
-#     def weighted_frequency(self,tracenumber,nperseg=64)    :
-#         '''
-#         Calculates the Weighted Instantaneous Signal
-#         https://ieeexplore.ieee.org/document/721370
-#         
-#         returns array of seize of radargram data
-#         '''
-#         
-#         fs=1.0/self.header["timeincrement"]
-#         signal=self.traces[tracenumber,:]
-#         time=self.header['time']
-#         time_to_append=np.arange((int(nperseg*2))*self.header["timeincrement"]*-2,time[0],self.header["timeincrement"])
-#         time=np.append(time_to_append,time)
-#         time=time+np.abs(time[0])
-#         signal=np.append(np.zeros(int(nperseg*2)),signal)
-#         
-#         
-# # =============================================================================
-# #         #
-# #         analytic_signal = hilbert(signal)
-# #         amplitude_envelope = np.abs(analytic_signal)
-# #         instantaneous_phase = np.unwrap(np.angle(analytic_signal))
-# #         instantaneous_frequency = (np.diff(instantaneous_phase) /(2.0*np.pi) * fs)
-# #         instantaneous_frequency=np.append(instantaneous_frequency,instantaneous_frequency[-1])
-# #         asq=amplitude_envelope*amplitude_envelope
-# #         asq_f=amplitude_envelope*instantaneous_frequency
-# # =============================================================================
-#         
-#         m=len(signal)
-#        # return(np.cumsum(asq_f)/asq.sum())
-# 
-#         nfft=m
-#         f, t, mag = spectrogram(signal, fs=fs,nperseg=nperseg,nfft=nfft,noverlap=nperseg-1,scaling='spectrum',mode='magnitude',window=('gaussian',20))
-#         #sum over magsquared times instant frequency
-#         
-#         magsq=mag*mag # this was squared before but spectrogram already gives the squared
-#         magsqsum=magsq.sum(axis=0)
-#         magsum=(magsq.T*f).T.sum(axis=0)
-#         wif=np.divide(magsum,magsqsum)
-#         return np.nan_to_num(wif)
-# 
-#         #return instantaneous_frequency
-#     
-#     def ifgram_frequency(self,tracenumber,nperseg=64)    :
-#         '''
-#         Calculates the Ifgram Weighted Instantaneous Signal
-#         https://ieeexplore.ieee.org/document/721370
-#         
-#         returns array of seize of radargram data
-#         '''
-#         
-#         fs=1.0/self.header["timeincrement"]
-#         signal=self.traces[tracenumber,:]
-#         time=self.header['time']
-#         time_to_append=np.arange((int(nperseg*2))*self.header["timeincrement"]*-2,time[0],self.header["timeincrement"])
-#         time=np.append(time_to_append,time)
-#         time=time+np.abs(time[0])
-#         signal=np.append(np.zeros(int(nperseg*2)),signal)
-#         m=len(signal)
-#         nfft=m
-#         ifg,S,_=reassigned_spectrogram(signal,sr=fs,n_fft=2*nfft,win_length=nperseg-1)
-#         return ifg
-# 
-#         #return instantaneous_frequency        
-# =============================================================================
+
+    # TODO: spectrosum(tracenumber, f_max, f_min, nperseg=64)
+    #       Returns ratio of power up to f_max divided by power up to f_min per
+    #       trace using scipy.signal.spectrogram. Useful for frequency-band
+    #       anomaly detection. Needs: find_nearest() helper (local lambda).
+
+    # TODO: powersum(tracenumber, end=0)
+    #       Returns sum of squared sample values of a single trace up to sample
+    #       index `end`. Simple energy metric per trace.
+
+    # TODO: powerfuncs(tracenumber, refspec, powerwindow=64, nperseg=64)
+    #       Returns per-time-step normalised spectral power relative to a
+    #       reference spectrum `refspec`. Uses spectrogram + cumsum.
+    #       Depends on pandas for dfSxx (can be replaced with plain numpy).
+
+    # TODO: weighted_frequency(tracenumber, nperseg=64)
+    #       Computes the weighted instantaneous frequency (IEEE 10.1109/78.721370)
+    #       as sum(|S(f,t)|^2 * f) / sum(|S(f,t)|^2) per time step.
+    #       Alternative Hilbert-based instantaneous frequency also drafted here.
+
+    # TODO: ifgram_frequency(tracenumber, nperseg=64)
+    #       Reassigned-spectrogram instantaneous frequency via librosa.ifgram.
+    #       Requires: pip install librosa
+    #       Import:   from librosa.core import reassigned_spectrogram as ifgram
+    #       Ref:      https://ieeexplore.ieee.org/document/721370
+
     def shortening(self,begin=0,end=200):
         '''shorts itself to traces begin - end
         begin --- start trace of shortened radargram
@@ -1338,51 +1189,19 @@ class radargram():
             for key, value in self.header.items():
                 writer.writerow([key, value])
     
-    def export_sgy(self,exportpath='default.sgy',maxtrace='default'):
-        #reference: https://github.com/equinor/segyio/blob/master/python/examples/make-file.py
-        spec = segyio.spec()
-        filename = exportpath
-        if maxtrace=='default':
-            maxtrace=1000
-        else:
-            maxtrace=int(self.header['tracenumber'])
-        # to create a file from nothing, we need to tell segyio about the structure of
-        # the file, i.e. its inline numbers, crossline numbers, etc. You can also add
-        # more structural information, but offsets etc. have sensible defautls. This is
-        # the absolute minimal specification for a N-by-M volume
-        spec.sorting = 2
-        spec.format = 5
-        spec.samples = range(0,self.header['samplenumber'])
-        spec.ilines = range(0,maxtrace)
-        spec.xlines = [0]
-        tr = 0
-        if self.header['timedimension'] == 'ns':
-            temp_dt=int(self.header['timeincrement']*1E6)
-        elif self.header['timedimension'] == 'ms':
-            temp_dt=1
-        print("Setting time to ", temp_dt)
-        print("Saving {} Traces".format(maxtrace))
-        with segyio.create(filename, spec) as f:
-            for il in range(maxtrace):
-                for xl in spec.xlines:
-                    f.header[tr] = {
-                        segyio.su.offset : 1,
-                        segyio.su.iline  : il,
-                        segyio.su.xline  : xl,
-                        segyio.su.dt     : temp_dt
-                        }
-                    f.trace[tr] = self.traces[tr,:]
-                    tr += 1
-            print("Tr reached ",tr)
-            f.bin.update(tsort=segyio.TraceSortingFormat.INLINE_SORTING)
-        #set sample time
-            f.bin.update(hdt=temp_dt)
-        print("Wrote {}".format(exportpath))
-    
-    def export_sgy(self,exportpath='default.sgy',keyX="X",keyY="Y"):
+    # TODO: old export_sgy(exportpath, maxtrace) — simple index-based SEG-Y export
+    #       without coordinate headers. Superseded by the current implementation
+    #       below which writes X/Y trace headers from metadataframe. Re-introduce
+    #       only if a no-coordinates fallback is needed.
+
+    def export_sgy(self,exportpath='default.sgy',keyX="X",keyY="Y",maxtrace="all"):
         #reference: https://github.com/equinor/segyio/blob/master/python/examples/make-file.py
          spec = segyio.spec()
          filename = exportpath
+         if maxtrace=='default':
+             maxtrace=1000
+         else:
+             maxtrace=int(self.header['tracenumber'])
          # to create a file from nothing, we need to tell segyio about the structure of
          # the file, i.e. its inline numbers, crossline numbers, etc. You can also add
          # more structural information, but offsets etc. have sensible defautls. This is
@@ -1390,7 +1209,7 @@ class radargram():
          spec.sorting = 2
          spec.format = 5
          spec.samples = range(0,self.header['samplenumber'])
-         spec.ilines = range(0,self.header['tracenumber'])
+         spec.ilines = range(0,maxtrace)
          spec.xlines = [0]
          tr = 0
          with segyio.create(filename, spec) as f:
