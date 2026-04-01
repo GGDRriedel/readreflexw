@@ -12,7 +12,7 @@ import geopandas as gpd
 from shapely.geometry import Point
 from scipy.interpolate import CubicSpline,interp1d
 
-from readreflexw.readreflex.utils import apply_kalman_filter
+from .utils import apply_kalman_filter
 
 
 def parse_gps_data(file_path):
