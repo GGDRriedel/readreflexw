@@ -585,4 +585,4 @@ def example_noise_analysis():
     return analyzer
 
 # Uncomment to run example:
-noise_analyzer = example_noise_analysis()
+#noise_analyzer = example_noise_analysis()
