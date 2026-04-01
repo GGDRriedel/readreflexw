@@ -465,9 +465,9 @@ class radargram():
             bytelength=2
             for j,i in enumerate(np.arange(156,156+self.NoOfSamples*bytelength,bytelength)):
                     tracedata[j]=struct.unpack('h', byteobject[i:i+bytelength])[0]
-                    #tracedata[j]=struct.unpack('h', byteobject[i:i+bytelength])
-                    #print(tracedata[j])
-            return tracedata
+            # formatcode 2 has no coordinate block in the trace header;
+            # return zeros so __convert_to_array can unpack consistently
+            return tracedata, 0.0, 0.0, 0.0, 0.0
    
     def __convert_to_array(self):
         if self.header["formatcode"]==3:
